@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#04383c" />
+  <title>Lebu · Sin conexión</title>
+  <script>
+    try {
+      const pref = localStorage.getItem('lebu.appearance.v1') || 'system';
+      const dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      document.querySelector('meta[name="theme-color"]').content = dark ? '#08171a' : '#f7f8f4';
+    } catch {}
+  </script>
+  <style>
+    :root{--bg:#f7f8f4;--card:#fff;--ink:#15211d;--muted:#718079;--line:#e3e8e4;--brand:#04383c;--shadow:rgba(8,56,48,.08)}
+    html[data-theme="dark"]{--bg:#071417;--card:#0d1f22;--ink:#edf6f3;--muted:#8ea4a1;--line:#213a3d;--brand:#77cbb8;--shadow:rgba(0,0,0,.28);color-scheme:dark}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:28px}.card{max-width:420px;text-align:center;background:var(--card);border:1px solid var(--line);border-radius:28px;padding:32px;box-shadow:0 16px 50px var(--shadow)}img{width:88px;height:88px;border-radius:22px}h1{margin:20px 0 8px;font-size:30px;letter-spacing:-.04em}p{margin:0;color:var(--muted);line-height:1.55}.note{margin-top:18px;color:var(--brand);font-weight:700;font-size:14px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="/icons/icon-192.png" alt="Lebu" />
+    <h1>Estás sin conexión.</h1>
+    <p>Si ya abriste Lebu antes en este dispositivo, volvé a intentar en unos segundos. Tus datos guardados siguen en el teléfono.</p>
+    <div class="note">Vigila, entiende, te guía.</div>
+  </div>
+</body>
+</html>
