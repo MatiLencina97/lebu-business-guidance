@@ -135,6 +135,8 @@ A real Supabase project and the required environment variables are necessary for
 
 The product is designed for Vercel deployment and a Supabase backend. The public portfolio version intentionally contains no production secrets or private customer data.
 
+Git-connected production deployments are enabled so changes merged to the production branch can be deployed automatically by Vercel.
+
 ## Project status
 
 Active beta / portfolio snapshot. The repository reflects an evolving real-world product, including incremental SQL migrations and production-oriented business rules.
