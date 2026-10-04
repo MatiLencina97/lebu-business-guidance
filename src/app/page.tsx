@@ -164,6 +164,7 @@ function formatPeriodRange(start: string, end: string) {
 }
 
 type PeriodType = 'weekly' | 'biweekly' | 'monthly';
+type TargetMode = 'profit' | 'break_even';
 type SettingsSection = 'plan' | 'preferences' | 'account';
 type MainView = 'home' | 'movements' | 'production' | 'insights' | 'simulator';
 
@@ -262,6 +263,7 @@ function recurringCoveredAmountForSummary(
 
 type SettingsDraft = {
   profitTarget: string;
+  targetMode: TargetMode;
   periodType: PeriodType;
   periodStartDay: number;
   openWeekdays: number[];
@@ -687,12 +689,13 @@ const initialRecurringCosts: RecurringCost[] = [];
 const initialSales: Sale[] = [];
 const initialExpenses: Expense[] = [];
 
-const APP_VERSION = '1.22.6';
+const APP_VERSION = '1.22.7';
 const STORAGE_KEY = 'lebu-v1-data';
 const LEGACY_STORAGE_KEYS = ['lebu-v011-demo', 'lebu-v010-demo', 'tarasca-v09-demo', 'tarasca-v08-demo', 'tarasca-v07-demo'];
 
 export default function Home() {
   const [profitTarget, setProfitTarget] = useState('');
+  const [targetMode, setTargetMode] = useState<TargetMode>('profit');
   const [periodType, setPeriodType] = useState<PeriodType>('monthly');
   const [periodStartDay, setPeriodStartDay] = useState(1);
   const [historicalSummary, setHistoricalSummary] = useState<HistoricalSummary | null>(null);
@@ -726,6 +729,7 @@ export default function Home() {
   });
   const [settingsDraft, setSettingsDraft] = useState<SettingsDraft>({
     profitTarget: '',
+    targetMode: 'profit',
     periodType: 'monthly',
     periodStartDay: 1,
     openWeekdays: [0, 1, 2, 3, 4, 5, 6],
@@ -933,6 +937,7 @@ export default function Home() {
         if (cancelled) return;
         if (parsed) {
           if (typeof parsed.profitTarget === 'string') setProfitTarget(parsed.profitTarget);
+          if (parsed.targetMode === 'break_even' || parsed.targetMode === 'profit') setTargetMode(parsed.targetMode);
           if (['weekly', 'biweekly', 'monthly'].includes(String(parsed.periodType))) setPeriodType(parsed.periodType as PeriodType);
           if (Number.isFinite(Number(parsed.periodStartDay))) setPeriodStartDay(Math.min(Math.max(Number(parsed.periodStartDay), 1), 31));
           if (parsed.historicalSummary && typeof parsed.historicalSummary === 'object') setHistoricalSummary(parsed.historicalSummary as HistoricalSummary);
@@ -968,6 +973,7 @@ export default function Home() {
     if (!settingsOpen) return;
     setSettingsDraft({
       profitTarget,
+      targetMode,
       periodType,
       periodStartDay,
       openWeekdays: [...openWeekdays],
@@ -986,7 +992,7 @@ export default function Home() {
     setSettingsCoveredRecurringIds(coverageActive ? coveredRecurringIdsForSummary(historicalSummary, recurringCosts) : []);
     setNewRecurring({ name: '', amount: '', frequency: 'monthly', paymentSchedule: null, amountApproximate: false, includedInHistoricalSummary: coverageActive });
     setExceptionDate(todayISO() < currentPeriod.start ? currentPeriod.start : todayISO() > currentPeriod.end ? currentPeriod.end : todayISO());
-  }, [settingsOpen, profitTarget, periodType, periodStartDay, openWeekdays, dayExceptions, recurringCosts, categories, smartDistributionEnabled, historicalSummary, availableCash]);
+  }, [settingsOpen, profitTarget, targetMode, periodType, periodStartDay, openWeekdays, dayExceptions, recurringCosts, categories, smartDistributionEnabled, historicalSummary, availableCash]);
 
   useEffect(() => {
     return () => {
@@ -996,7 +1002,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state = { schemaVersion: 16, profitTarget, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments };
+    const state = { schemaVersion: 16, profitTarget, targetMode, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments };
 
     // IndexedDB es la persistencia principal. Mantenemos un espejo pequeño en localStorage
     // como red de seguridad para navegadores que bloqueen IndexedDB.
@@ -1006,7 +1012,7 @@ export default function Home() {
     } catch {
       // Si el navegador rechaza localStorage, IndexedDB sigue siendo suficiente.
     }
-  }, [hydrated, profitTarget, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments]);
+  }, [hydrated, profitTarget, targetMode, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments]);
 
   useEffect(() => {
     const sync = () => setIsOnline(navigator.onLine);
@@ -1022,6 +1028,7 @@ export default function Home() {
   const cloudBusinessState = useMemo<CloudState>(() => ({
     schemaVersion: 16,
     profitTarget,
+    targetMode,
     periodType,
     periodStartDay,
     historicalSummary,
@@ -1037,10 +1044,11 @@ export default function Home() {
     availableCash,
     cashUpdatedAt,
     cashAdjustments,
-  }), [profitTarget, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments]);
+  }), [profitTarget, targetMode, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments]);
 
   const applyCloudBusinessState = useCallback((parsed: CloudState) => {
     if (typeof parsed.profitTarget === 'string') setProfitTarget(parsed.profitTarget);
+    if (parsed.targetMode === 'break_even' || parsed.targetMode === 'profit') setTargetMode(parsed.targetMode);
     if (['weekly', 'biweekly', 'monthly'].includes(String(parsed.periodType))) setPeriodType(parsed.periodType as PeriodType);
     if (Number.isFinite(Number(parsed.periodStartDay))) setPeriodStartDay(Math.min(Math.max(Number(parsed.periodStartDay), 1), 31));
     if (parsed.historicalSummary && typeof parsed.historicalSummary === 'object') setHistoricalSummary(parsed.historicalSummary as HistoricalSummary);
@@ -1412,11 +1420,11 @@ export default function Home() {
   useEffect(() => {
     if (!hydrated || pushStatus !== 'enabled' || !isOnline) return;
     let cancelled = false;
-    void getPushPreferences()
+    void getPushPreferences(cloud.businessId || undefined)
       .then((preferences) => { if (!cancelled) setPushPreferences(preferences); })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, [hydrated, pushStatus, isOnline]);
+  }, [hydrated, pushStatus, isOnline, cloud.businessId]);
 
   const period = useMemo(() => getCurrentPeriod(periodType, periodStartDay), [periodType, periodStartDay]);
   const settingsPeriod = useMemo(() => getCurrentPeriod(settingsDraft.periodType, settingsDraft.periodStartDay), [settingsDraft.periodType, settingsDraft.periodStartDay]);
@@ -1447,8 +1455,9 @@ export default function Home() {
   const smartModel = useMemo(() => buildSmartDistributionModel(analysisSales, openWeekdays), [analysisSales, openWeekdays]);
 
   const result = useMemo(() => {
-    const target = parseMoney(profitTarget);
-    const hasTarget = target > 0;
+    const configuredTarget = parseMoney(profitTarget);
+    const target = targetMode === 'break_even' ? 0 : configuredTarget;
+    const hasTarget = targetMode === 'break_even' || target > 0;
     const historicalSummaryActive = Boolean(
       historicalSummary
       && historicalSummary.startDate >= period.start
@@ -1558,7 +1567,9 @@ export default function Home() {
     const pathVsExpectedSales = soldSoFar - expectedSalesByToday;
     const targetDate = remainingOpenDates[0] || null;
     const dailyNeeded = targetDate ? Number(smartTargetsByDate[targetDate] || 0) : 0;
-    const profitProgress = target > 0 ? Math.min(Math.max((currentProfit / target) * 100, 0), 100) : 0;
+    const profitProgress = targetMode === 'break_even'
+      ? (goalReached ? 100 : 0)
+      : target > 0 ? Math.min(Math.max((currentProfit / target) * 100, 0), 100) : 0;
 
     const betterDayScenario = Math.ceil((dailyNeeded * 1.25) / 1000) * 1000;
     const profitContributionFromScenario = betterDayScenario * contributionMargin;
@@ -1593,6 +1604,7 @@ export default function Home() {
 
     return {
       target,
+      targetMode,
       hasTarget,
       historicalSummaryActive,
       historicalSales,
@@ -1639,7 +1651,7 @@ export default function Home() {
       projectedGap,
       salesByDate,
     };
-  }, [profitTarget, historicalSummary, recurringCosts, sales, expenses, period, openWeekdays, dayExceptions, smartDistributionEnabled, smartModel]);
+  }, [profitTarget, targetMode, historicalSummary, recurringCosts, sales, expenses, period, openWeekdays, dayExceptions, smartDistributionEnabled, smartModel]);
 
   const recurringPaymentProgressById = useMemo(() => {
     const reconciliation = reconcileRecurringExpenses(expenses, recurringCosts);
@@ -2050,6 +2062,7 @@ export default function Home() {
           businessId: cloud.businessId || undefined,
           generatedAt: new Date().toISOString(),
           hasTarget: result.hasTarget,
+          targetMode: result.targetMode,
           goalReached: result.goalReached,
           additionalSalesNeeded: result.additionalSalesNeeded,
           dailyNeeded: result.dailyNeeded,
@@ -2075,13 +2088,13 @@ export default function Home() {
       })();
     }, 700);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [hydrated, pushStatus, isOnline, cloud.user?.id, cloud.businessId, result.hasTarget, result.goalReached, result.additionalSalesNeeded, result.dailyNeeded, result.remainingOpenDays, result.currentProfit, result.soldSoFar, result.variableSpent, result.totalExpenses, result.target, period.start, period.end, periodType, openWeekdays, dayExceptions, result.salesByDate, result.observedDailySales, result.projectedProfit, result.smartActive, result.smartTargetsByDate, smartModel.weightByWeekday, undoMovement]);
+  }, [hydrated, pushStatus, isOnline, cloud.user?.id, cloud.businessId, result.hasTarget, result.targetMode, result.goalReached, result.additionalSalesNeeded, result.dailyNeeded, result.remainingOpenDays, result.currentProfit, result.soldSoFar, result.variableSpent, result.totalExpenses, result.target, period.start, period.end, periodType, openWeekdays, dayExceptions, result.salesByDate, result.observedDailySales, result.projectedProfit, result.smartActive, result.smartTargetsByDate, smartModel.weightByWeekday, undoMovement]);
 
   async function activateNotifications() {
     setPushBusy(true);
     setPushMessage('');
     try {
-      await enablePushNotifications();
+      await enablePushNotifications(cloud.businessId || undefined);
       setPushStatus('enabled');
       setPushMessage('Listo. Lebu puede avisarte al empezar cada día abierto.');
         if (typeof window !== 'undefined') localStorage.setItem(NOTIFICATION_PROMPT_KEY, '1');
@@ -2133,7 +2146,7 @@ export default function Home() {
     setPushPreferences(next);
     setPushMessage('');
     try {
-      await savePushPreferences(next);
+      await savePushPreferences(next, cloud.businessId || undefined);
       setPushMessage(
         key === 'smartChangesEnabled'
           ? (next.smartChangesEnabled ? 'Avisos por cambios importantes activados.' : 'Avisos por cambios importantes pausados.')
@@ -2154,7 +2167,7 @@ export default function Home() {
     setPushPreferences(next);
     setPushMessage('');
     try {
-      await savePushPreferences(next);
+      await savePushPreferences(next, cloud.businessId || undefined);
       setPushMessage(`Listo. El aviso diario queda para las ${morningTime}.`);
       } catch (error) {
       setPushPreferences(previous);
@@ -2169,7 +2182,7 @@ export default function Home() {
     setPushPreferences(next);
     setPushMessage('');
     try {
-      await savePushPreferences(next);
+      await savePushPreferences(next, cloud.businessId || undefined);
       setPushMessage(`Listo. El resumen de cierre queda para las ${closingTime}.`);
       } catch (error) {
       setPushPreferences(previous);
@@ -2250,6 +2263,27 @@ export default function Home() {
     const movementId = createEntityId();
     pendingSmartEventRef.current = { id: String(movementId), kind: 'sale_added', amount, occurredAt: new Date().toISOString() };
     const item: Sale = { id: movementId, amount: String(amount), date: saleDraft.date, ...movementAuditForCurrentUser() };
+
+    // Si una venta manual de hoy cruza un hito, reproducimos la firma dentro del click.
+    // Esto es mucho más fiable en Safari/iOS que esperar a un effect asíncrono.
+    const isTodaySale = saleDraft.date === todayISO();
+    const crossesDailyGoal = isTodaySale
+      && result.todayIsOpen
+      && dailyGoal.referenceTarget > 0
+      && dailyGoal.todaySales < dailyGoal.referenceTarget
+      && dailyGoal.todaySales + amount >= dailyGoal.referenceTarget;
+    const crossesBreakEven = isTodaySale
+      && result.hasTarget
+      && result.currentProfit < 0
+      && result.currentProfit + amount >= 0;
+    const crossesPeriodGoal = isTodaySale
+      && result.hasTarget
+      && !result.goalReached
+      && result.currentProfit + amount >= result.target;
+    if (crossesDailyGoal || crossesBreakEven || crossesPeriodGoal) {
+      playLebuSound();
+      suppressMilestoneSoundRef.current = true;
+    }
 
     setSales((list) => [...list, item]);
     // El sonido de hitos se resuelve de forma centralizada al observar el resultado recalculado.
@@ -2661,11 +2695,12 @@ export default function Home() {
   function saveSettings() {
     if (!canManageBusiness) return;
     const target = parseMoney(settingsDraft.profitTarget);
-    if (!target) return;
-    const isFirstObjective = parseMoney(profitTarget) <= 0;
+    if (settingsDraft.targetMode === 'profit' && !target) return;
+    const isFirstObjective = targetMode !== 'break_even' && parseMoney(profitTarget) <= 0;
     if (isFirstObjective) suppressMilestoneSoundOnce();
     pendingSmartEventRef.current = { id: `settings-${Date.now()}`, kind: 'settings_changed', occurredAt: new Date().toISOString() };
-    setProfitTarget(String(target));
+    setProfitTarget(settingsDraft.targetMode === 'profit' ? String(target) : (settingsDraft.profitTarget || profitTarget || '0'));
+    setTargetMode(settingsDraft.targetMode);
     setPeriodType(settingsDraft.periodType);
     setPeriodStartDay(Math.min(Math.max(Math.round(settingsDraft.periodStartDay || 1), 1), 31));
     setOpenWeekdays([...settingsDraft.openWeekdays]);
@@ -2758,7 +2793,7 @@ export default function Home() {
   function exportBackup() {
     const backup = {
       app: 'Lebu', schemaVersion: 16, exportedAt: new Date().toISOString(),
-      profitTarget, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments,
+      profitTarget, targetMode, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments,
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -2779,6 +2814,7 @@ export default function Home() {
       if (!parsed || typeof parsed !== 'object') throw new Error('invalid');
       pendingSmartEventRef.current = { id: `import-${Date.now()}`, kind: 'backup_imported', occurredAt: new Date().toISOString() };
       if (typeof parsed.profitTarget === 'string') setProfitTarget(parsed.profitTarget);
+      if (parsed.targetMode === 'break_even' || parsed.targetMode === 'profit') setTargetMode(parsed.targetMode);
       if (['weekly', 'biweekly', 'monthly'].includes(parsed.periodType)) setPeriodType(parsed.periodType);
       if (Number.isFinite(Number(parsed.periodStartDay))) setPeriodStartDay(Math.min(Math.max(Number(parsed.periodStartDay), 1), 31));
       if (parsed.historicalSummary && typeof parsed.historicalSummary === 'object') setHistoricalSummary(parsed.historicalSummary as HistoricalSummary);
@@ -2795,7 +2831,7 @@ export default function Home() {
       if (typeof parsed.availableCash === 'string' || typeof parsed.availableCash === 'number') setAvailableCash(String(parsed.availableCash));
       if (typeof parsed.cashUpdatedAt === 'string') setCashUpdatedAt(parsed.cashUpdatedAt);
       if (Array.isArray(parsed.cashAdjustments)) setCashAdjustments((parsed.cashAdjustments as CashAdjustment[]).slice(-100));
-      const importedState = { schemaVersion: 16, profitTarget: typeof parsed.profitTarget === 'string' ? parsed.profitTarget : profitTarget, periodType: ['weekly', 'biweekly', 'monthly'].includes(String(parsed.periodType)) ? parsed.periodType as PeriodType : periodType, periodStartDay: Number.isFinite(Number(parsed.periodStartDay)) ? Math.min(Math.max(Number(parsed.periodStartDay), 1), 31) : periodStartDay, historicalSummary: parsed.historicalSummary && typeof parsed.historicalSummary === 'object' ? parsed.historicalSummary : historicalSummary, openWeekdays: Array.isArray(parsed.openWeekdays) && parsed.openWeekdays.length ? parsed.openWeekdays : openWeekdays, dayExceptions: Array.isArray(parsed.dayExceptions) ? parsed.dayExceptions : dayExceptions, recurringCosts: Array.isArray(parsed.recurringCosts) ? parsed.recurringCosts : recurringCosts, sales: Array.isArray(parsed.sales) ? parsed.sales : sales, expenses: Array.isArray(parsed.expenses) ? parsed.expenses : expenses, dailySnapshots: Array.isArray(parsed.dailySnapshots) ? parsed.dailySnapshots : dailySnapshots, categories: Array.isArray(parsed.categories) ? parsed.categories : categories, soundsEnabled: typeof parsed.soundsEnabled === 'boolean' ? parsed.soundsEnabled : soundsEnabled, smartDistributionEnabled: typeof parsed.smartDistributionEnabled === 'boolean' ? parsed.smartDistributionEnabled : smartDistributionEnabled, availableCash: typeof parsed.availableCash === 'string' || typeof parsed.availableCash === 'number' ? String(parsed.availableCash) : availableCash, cashUpdatedAt: typeof parsed.cashUpdatedAt === 'string' ? parsed.cashUpdatedAt : cashUpdatedAt, cashAdjustments: Array.isArray(parsed.cashAdjustments) ? parsed.cashAdjustments.slice(-100) : cashAdjustments };
+      const importedState = { schemaVersion: 16, profitTarget: typeof parsed.profitTarget === 'string' ? parsed.profitTarget : profitTarget, targetMode: parsed.targetMode === 'break_even' ? 'break_even' : parsed.targetMode === 'profit' ? 'profit' : targetMode, periodType: ['weekly', 'biweekly', 'monthly'].includes(String(parsed.periodType)) ? parsed.periodType as PeriodType : periodType, periodStartDay: Number.isFinite(Number(parsed.periodStartDay)) ? Math.min(Math.max(Number(parsed.periodStartDay), 1), 31) : periodStartDay, historicalSummary: parsed.historicalSummary && typeof parsed.historicalSummary === 'object' ? parsed.historicalSummary : historicalSummary, openWeekdays: Array.isArray(parsed.openWeekdays) && parsed.openWeekdays.length ? parsed.openWeekdays : openWeekdays, dayExceptions: Array.isArray(parsed.dayExceptions) ? parsed.dayExceptions : dayExceptions, recurringCosts: Array.isArray(parsed.recurringCosts) ? parsed.recurringCosts : recurringCosts, sales: Array.isArray(parsed.sales) ? parsed.sales : sales, expenses: Array.isArray(parsed.expenses) ? parsed.expenses : expenses, dailySnapshots: Array.isArray(parsed.dailySnapshots) ? parsed.dailySnapshots : dailySnapshots, categories: Array.isArray(parsed.categories) ? parsed.categories : categories, soundsEnabled: typeof parsed.soundsEnabled === 'boolean' ? parsed.soundsEnabled : soundsEnabled, smartDistributionEnabled: typeof parsed.smartDistributionEnabled === 'boolean' ? parsed.smartDistributionEnabled : smartDistributionEnabled, availableCash: typeof parsed.availableCash === 'string' || typeof parsed.availableCash === 'number' ? String(parsed.availableCash) : availableCash, cashUpdatedAt: typeof parsed.cashUpdatedAt === 'string' ? parsed.cashUpdatedAt : cashUpdatedAt, cashAdjustments: Array.isArray(parsed.cashAdjustments) ? parsed.cashAdjustments.slice(-100) : cashAdjustments };
       await writeLocalState(importedState).catch(() => undefined);
       alert('Respaldo importado. Lebu ya quedó actualizado.');
     } catch {
@@ -2809,7 +2845,7 @@ export default function Home() {
     if (!canManageBusiness) return;
     suppressMilestoneSoundOnce();
     if (!confirm(cloud.user ? '¿Borrar todos los datos de Lebu? Como tenés la nube activa, este borrado también se sincronizará con tu cuenta. Esta acción no se puede deshacer.' : '¿Borrar todos los datos guardados en este dispositivo? Esta acción no se puede deshacer.')) return;
-    setProfitTarget(''); setPeriodType('monthly'); setPeriodStartDay(1); setHistoricalSummary(null); setOpenWeekdays([0, 1, 2, 3, 4, 5, 6]); setDayExceptions([]);
+    setProfitTarget(''); setTargetMode('profit'); setPeriodType('monthly'); setPeriodStartDay(1); setHistoricalSummary(null); setOpenWeekdays([0, 1, 2, 3, 4, 5, 6]); setDayExceptions([]);
     setRecurringCosts([]); setSales([]); setExpenses([]); setDailySnapshots([]); setCategories(initialCategories); setSoundsEnabled(true); setSmartDistributionEnabled(true); setAvailableCash(''); setCashUpdatedAt(''); setCashAdjustments([]);
     await clearLocalState().catch(() => undefined);
     localStorage.removeItem(STORAGE_KEY); LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
@@ -3064,13 +3100,15 @@ export default function Home() {
                 ) : result.goalReached ? (
                   <>
                     <div className="mt-4 text-[clamp(2.65rem,8vw,5rem)] font-black leading-[.95] tracking-[-0.055em] text-white">
-                      Ya llegaste.
+                      {result.targetMode === 'break_even' ? 'Gastos cubiertos.' : 'Ya llegaste.'}
                     </div>
                     <p className="mt-4 max-w-xl text-sm leading-6 text-white/78 sm:text-base">
-                      Alcanzaste tu objetivo de <strong className="font-extrabold text-white">{money.format(result.target)} de ganancia</strong> {periodInfo.phrase}. Con lo registrado hasta ahora, no necesitás correr atrás de ningún número diario.
+                      {result.targetMode === 'break_even'
+                        ? <>Llegaste al <strong className="font-extrabold text-white">punto de equilibrio</strong> {periodInfo.phrase}. Con los gastos contemplados, desde acá todo excedente empieza a quedar por encima de costos.</>
+                        : <>Alcanzaste tu objetivo de <strong className="font-extrabold text-white">{money.format(result.target)} de ganancia</strong> {periodInfo.phrase}. Con lo registrado hasta ahora, no necesitás correr atrás de ningún número diario.</>}
                     </p>
                     {result.surplusProfit > 0 && (
-                      <div className="goal-surplus-pill mt-5">+ {money.format(result.surplusProfit)} por encima de tu meta</div>
+                      <div className="goal-surplus-pill mt-5">+ {money.format(result.surplusProfit)} {result.targetMode === 'break_even' ? 'por encima del equilibrio' : 'por encima de tu meta'}</div>
                     )}
                   </>
                 ) : dailyGoal.reached ? (
@@ -3100,7 +3138,9 @@ export default function Home() {
                     <p className="mt-4 max-w-xl text-sm leading-6 text-white/72 sm:text-base">
                       {result.todayIsOpen && dailyGoal.referenceTarget > 0
                         ? <>Llevás <strong className="font-extrabold text-white">{money.format(dailyGoal.todaySales)}</strong> · te faltan <strong className="font-extrabold text-white">{money.format(Math.max(dailyGoal.referenceTarget - dailyGoal.todaySales, 0))}</strong> para cumplir el ritmo de hoy.</>
-                        : <>para llegar a <strong className="font-extrabold text-white">{money.format(result.target)} de ganancia</strong> {periodInfo.phrase}.</>}
+                        : result.targetMode === 'break_even'
+                          ? <>para <strong className="font-extrabold text-white">cubrir todos los gastos contemplados</strong> {periodInfo.phrase}.</>
+                          : <>para llegar a <strong className="font-extrabold text-white">{money.format(result.target)} de ganancia</strong> {periodInfo.phrase}.</>}
                     </p>
                   </>
                 )}
@@ -3156,7 +3196,7 @@ export default function Home() {
                     {!result.hasTarget
                       ? 'Configurá tu objetivo para empezar.'
                       : result.goalReached
-                        ? 'Objetivo alcanzado. Todo lo que sumes desde acá queda por encima de tu meta.'
+                        ? (result.targetMode === 'break_even' ? 'Gastos cubiertos. Todo lo que sumes desde acá queda por encima del punto de equilibrio.' : 'Objetivo alcanzado. Todo lo que sumes desde acá queda por encima de tu meta.')
                         : result.currentProfit >= 0
                           ? 'Ya cubriste los gastos. Ahora estás construyendo tu ganancia objetivo.'
                           : result.soldSoFar <= 0
@@ -3469,7 +3509,7 @@ export default function Home() {
                 <span className="calculation-summary-value">{money.format(result.additionalSalesNeeded)} por vender</span>
               </summary>
               <div className="calculation-body">
-                <CalculationRow label="Ganancia objetivo" value={result.target} />
+                <CalculationRow label={result.targetMode === 'break_even' ? 'Ganancia objetivo · cubrir gastos' : 'Ganancia objetivo'} value={result.target} />
                 <CalculationRow label="Gastos recurrentes pendientes" value={result.recurringTotal} positive />
                 {result.recurringCoveredTotal > 0 && <CalculationRow label="Recurrentes cubiertos por el acumulado" value={result.recurringCoveredTotal} positive />}
                 <CalculationRow label={result.historicalSummaryActive ? 'Gastos acumulados y registrados' : 'Otros gastos registrados'} value={result.variableSpent} positive />
@@ -4104,11 +4144,27 @@ export default function Home() {
           </div>
 
           <div className={`mt-6 ${!canManageBusiness ? 'settings-readonly-block' : ''}`}>
-            <label className="block">
-              <div className="flex items-center gap-2"><span className="field-label">{settingsDraft.periodType === 'monthly' && settingsDraft.periodStartDay !== 1 ? 'Quiero ganar en este período' : periodCopy[settingsDraft.periodType].targetLabel}</span><HelpTip text="Es la ganancia que querés que te quede después de contemplar los gastos. No es facturación: Lebu calcula cuánto necesitás vender para llegar a esa ganancia." /></div>
-              <MoneyInput value={settingsDraft.profitTarget} onChange={(value) => setSettingsDraft((current) => ({ ...current, profitTarget: value }))} />
-              <p className="mt-2 text-xs leading-5 text-[var(--muted)]">Podés probar otro número tranquilo: Lebu no cambia tu objetivo real hasta que toques <strong>Guardar cambios</strong>.</p>
-            </label>
+            <div className="flex items-center gap-2"><span className="field-label">¿Qué querés lograr en este período?</span><HelpTip text="Podés usar Lebu para llegar al punto de equilibrio o para cubrir gastos y además buscar una ganancia concreta." /></div>
+            <div className="mt-3 grid grid-cols-2 rounded-2xl bg-[var(--surface-soft)] p-1">
+              <button type="button" onClick={() => setSettingsDraft((current) => ({ ...current, targetMode: 'break_even' }))} className={`segment-button ${settingsDraft.targetMode === 'break_even' ? 'segment-button-active' : ''}`}>
+                Cubrir gastos
+              </button>
+              <button type="button" onClick={() => setSettingsDraft((current) => ({ ...current, targetMode: 'profit' }))} className={`segment-button ${settingsDraft.targetMode === 'profit' ? 'segment-button-active' : ''}`}>
+                Ganar un monto
+              </button>
+            </div>
+            {settingsDraft.targetMode === 'profit' ? (
+              <label className="mt-4 block">
+                <div className="flex items-center gap-2"><span className="field-label">{settingsDraft.periodType === 'monthly' && settingsDraft.periodStartDay !== 1 ? 'Quiero ganar en este período' : periodCopy[settingsDraft.periodType].targetLabel}</span><HelpTip text="Es la ganancia que querés que te quede después de contemplar los gastos. No es facturación: Lebu calcula cuánto necesitás vender para llegar a esa ganancia." /></div>
+                <MoneyInput value={settingsDraft.profitTarget} onChange={(value) => setSettingsDraft((current) => ({ ...current, profitTarget: value }))} />
+                <p className="mt-2 text-xs leading-5 text-[var(--muted)]">Lebu suma los gastos contemplados y reparte únicamente las ventas que todavía faltan para dejarte esa ganancia.</p>
+              </label>
+            ) : (
+              <div className="mt-4 rounded-2xl border border-[var(--line)] bg-[var(--card-translucent)] p-4">
+                <strong className="text-sm text-[var(--ink)]">Punto de equilibrio</strong>
+                <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Lebu va a apuntar a que las ventas cubran todos los gastos contemplados. Cuando la ganancia estimada llegue a $0, el objetivo queda cumplido.</p>
+              </div>
+            )}
           </div>
 
           <div className={`mt-7 ${!canManageBusiness ? 'settings-readonly-block' : ''}`}>
@@ -4924,7 +4980,7 @@ export default function Home() {
             {settingsSection === 'preferences' && canManageBusiness ? <button type="button" onClick={clearAllData} className="text-sm font-bold text-[var(--muted)] hover:text-[var(--danger)]">Borrar datos de Lebu</button> : <span />}
             <div className="ml-auto flex gap-2">
               <button type="button" onClick={() => setSettingsOpen(false)} className="secondary-button justify-center">{settingsSection === 'plan' && canManageBusiness ? 'Cancelar' : 'Cerrar'}</button>
-              {settingsSection === 'plan' && canManageBusiness && <button type="button" onClick={saveSettings} disabled={parseMoney(settingsDraft.profitTarget) <= 0} className="primary-button justify-center disabled:cursor-not-allowed disabled:opacity-45">Guardar plan</button>}
+              {settingsSection === 'plan' && canManageBusiness && <button type="button" onClick={saveSettings} disabled={settingsDraft.targetMode === 'profit' && parseMoney(settingsDraft.profitTarget) <= 0} className="primary-button justify-center disabled:cursor-not-allowed disabled:opacity-45">Guardar plan</button>}
             </div>
           </div>
         </Modal>
