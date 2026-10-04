@@ -84,6 +84,14 @@ export async function POST(request: Request) {
     if (businessId) {
       const access = await requireBusinessAccess(request, businessId);
       if (!access) return NextResponse.json({ error: 'No tenés acceso a ese comercio.' }, { status: 403 });
+      // Vinculamos el dispositivo al comercio también en instalaciones antiguas.
+      if (subscription.business_id !== businessId) {
+        await supabaseRest(`push_subscriptions?device_id=eq.${encodeURIComponent(deviceId)}`, {
+          method: 'PATCH',
+          headers: { Prefer: 'return=minimal' },
+          body: JSON.stringify({ business_id: businessId, updated_at: new Date().toISOString() }),
+        });
+      }
       // La fuente autoritativa es Cloud. El snapshot del navegador sólo identifica el comercio
       // y aporta el evento que disparó la revisión; los números se reconstruyen en el servidor.
       currentSnapshot = await buildCanonicalNotificationSnapshot(
