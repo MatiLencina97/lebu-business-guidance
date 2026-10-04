@@ -33,9 +33,12 @@ function smartPayload(previous: any, current: any, event: any) {
   const wasReached = Boolean(previous.goalReached);
   const isReached = Boolean(current.goalReached);
   if (!wasReached && isReached && event.kind === 'sale_added') {
+    const breakEven = current.targetMode === 'break_even';
     return {
-      title: 'Objetivo cumplido 🦉',
-      body: `Llegaste a la meta. Tu ganancia estimada ya está en ${money(Number(current.currentProfit || 0))}.`,
+      title: breakEven ? 'Gastos cubiertos 🦉' : 'Objetivo cumplido 🦉',
+      body: breakEven
+        ? `Llegaste al punto de equilibrio. Desde acá, lo que sumes empieza a quedar por encima de los gastos.`
+        : `Llegaste a la meta. Tu ganancia estimada ya está en ${money(Number(current.currentProfit || 0))}.`,
       url: '/',
       tag: `lebu-goal-${current.periodEnd || 'current'}`,
       priority: 'goal',
