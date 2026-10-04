@@ -689,7 +689,7 @@ const initialRecurringCosts: RecurringCost[] = [];
 const initialSales: Sale[] = [];
 const initialExpenses: Expense[] = [];
 
-const APP_VERSION = '1.22.7';
+const APP_VERSION = '1.22.8';
 const STORAGE_KEY = 'lebu-v1-data';
 const LEGACY_STORAGE_KEYS = ['lebu-v011-demo', 'lebu-v010-demo', 'tarasca-v09-demo', 'tarasca-v08-demo', 'tarasca-v07-demo'];
 
@@ -2316,9 +2316,55 @@ export default function Home() {
 
   function importPreparedMovements(kind: ImportKind, rows: PreparedImportRow[]) {
     if (!canImportMovements || !rows.length) return;
-    suppressMilestoneSoundOnce();
 
     if (kind === 'sale') {
+      // La importación es el flujo normal de carga para muchos comercios. Calculamos el
+      // incremento real de la tanda antes de actualizar estado para poder celebrar el cruce
+      // dentro de la misma interacción del usuario (más fiable en Safari/iOS).
+      const existingById = new Map(sales.map((item) => [item.id, item]));
+      const today = todayISO();
+      const summaryCoversCurrentSales = historicalSummaryIsActiveForPeriod(historicalSummary, period)
+        && historicalSummaryCoversSales(historicalSummary);
+      let addedTodaySales = 0;
+      let addedPeriodSales = 0;
+
+      for (const row of rows) {
+        const matchedId = row.matchedExistingId ?? row.id;
+        if (existingById.has(matchedId)) continue;
+
+        const amount = Math.round(row.amount);
+        const coveredBySummary = Boolean(
+          summaryCoversCurrentSales
+          && historicalSummary
+          && row.date >= historicalSummary.startDate
+          && row.date <= historicalSummary.endDate,
+        );
+        if (!coveredBySummary && isWithinPeriod(row.date, period.start, period.end)) addedPeriodSales += amount;
+        if (!coveredBySummary && row.date === today) addedTodaySales += amount;
+      }
+
+      if (!startingDataImportPending && (addedTodaySales > 0 || addedPeriodSales > 0)) {
+        const crossesDailyGoal = result.todayIsOpen
+          && dailyGoal.referenceTarget > 0
+          && dailyGoal.todaySales < dailyGoal.referenceTarget
+          && dailyGoal.todaySales + addedTodaySales >= dailyGoal.referenceTarget;
+        const crossesBreakEven = result.hasTarget
+          && result.currentProfit < 0
+          && result.currentProfit + addedPeriodSales >= 0;
+        const crossesPeriodGoal = result.hasTarget
+          && !result.goalReached
+          && result.currentProfit + addedPeriodSales >= result.target;
+
+        // Una tanda puede cruzar varios hitos a la vez: el búho suena una sola vez.
+        if (crossesDailyGoal || crossesBreakEven || crossesPeriodGoal) {
+          playLebuSound();
+          suppressMilestoneSoundRef.current = true;
+        }
+      } else if (startingDataImportPending) {
+        // La carga inicial puede traer semanas o meses de historia: no celebramos hitos viejos.
+        suppressMilestoneSoundOnce();
+      }
+
       setSales((list) => {
         const byId = new Map(list.map((item) => [item.id, item]));
         let changed = false;
@@ -2354,6 +2400,8 @@ export default function Home() {
         return changed ? [...byId.values()] : list;
       });
     } else {
+      // Importar gastos puede recalcular el plan, pero no representa un hito positivo.
+      suppressMilestoneSoundOnce();
       setExpenses((list) => {
         const byId = new Map(list.map((item) => [item.id, item]));
         let changed = false;
