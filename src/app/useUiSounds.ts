@@ -63,15 +63,21 @@ export function useUiSounds(enabled: boolean) {
       const audio = getAudio();
       if (!audio) return;
       const wasMuted = audio.muted;
-      audio.muted = true;
+      const wasVolume = audio.volume;
+      // Importante: reproducir silenciado puede "funcionar" sin desbloquear audio audible.
+      // Lo iniciamos casi inaudible, pero NO muted, dentro del gesto real del usuario.
+      audio.muted = false;
+      audio.volume = Math.min(wasVolume, 0.001);
       void audio.play().then(() => {
         audio.pause();
         try { audio.currentTime = 0; } catch { /* metadata todavía cargando */ }
+        audio.volume = wasVolume;
         audio.muted = wasMuted;
         unlockedRef.current = true;
         unlockingRef.current = false;
         removeUnlockListeners();
       }).catch(() => {
+        audio.volume = wasVolume;
         audio.muted = wasMuted;
         unlockingRef.current = false;
       });
