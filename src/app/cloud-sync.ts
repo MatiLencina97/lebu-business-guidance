@@ -53,6 +53,7 @@ type RemoteDataset = {
 type SettingsRow = {
   business_id: string;
   profit_target: number | string;
+  target_mode?: string | null;
   period_type: string;
   period_start_day?: number | string | null;
   historical_summary?: Record<string, unknown> | null;
@@ -227,6 +228,7 @@ async function fetchRemoteDataset(businessId: string): Promise<RemoteDataset> {
     state: normalizedState({
       schemaVersion: 16,
       profitTarget: settings ? numberText(settings.profit_target) : '',
+      targetMode: settings?.target_mode === 'break_even' ? 'break_even' : 'profit',
       periodType: settings?.period_type || 'monthly',
       periodStartDay: settings?.period_start_day == null ? 1 : Number(settings.period_start_day),
       historicalSummary: settings?.historical_summary && typeof settings.historical_summary === 'object' ? settings.historical_summary : null,
@@ -322,6 +324,7 @@ async function pushLocalChanges({
     await upsertRows('business_settings', [{
       ...common,
       profit_target: Number(String(state.profitTarget || '').replace(/[^0-9.-]/g, '')) || 0,
+      target_mode: state.targetMode === 'break_even' ? 'break_even' : 'profit',
       period_type: state.periodType,
       period_start_day: state.periodStartDay,
       historical_summary: state.historicalSummary,
