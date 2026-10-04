@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthorizedSubscription, supabaseRest } from '@/lib/push-server';
+import { getAuthorizedSubscription, requireBusinessAccess, supabaseRest } from '@/lib/push-server';
 
 export const runtime = 'nodejs';
 
@@ -28,18 +28,64 @@ function localDateAndMinutes(timezone: string) {
   };
 }
 
+async function bindBusiness(request: Request, subscription: any, businessId: unknown) {
+  if (!businessId) return { subscription, shared: subscription, businessId: null as string | null };
+  const id = String(businessId);
+  const access = await requireBusinessAccess(request, id);
+  if (!access) return null;
+
+  if (subscription.business_id !== id) {
+    const bindResponse = await supabaseRest(`push_subscriptions?device_id=eq.${encodeURIComponent(subscription.device_id)}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ business_id: id, updated_at: new Date().toISOString() }),
+    });
+    if (!bindResponse.ok) throw new Error('No se pudo asociar este dispositivo al comercio.');
+  }
+
+  const sharedResponse = await supabaseRest(
+    `push_subscriptions?business_id=eq.${encodeURIComponent(id)}&select=*&order=updated_at.desc&limit=1`,
+  );
+  const rows = sharedResponse.ok ? await sharedResponse.json() : [];
+  const shared = rows?.[0] || subscription;
+
+  // Al abrir preferencias en cualquier dispositivo reconciliamos el resto del comercio.
+  // El permiso push sigue siendo local, pero horario/tipos de aviso son una preferencia compartida.
+  if (rows?.[0]) {
+    await supabaseRest(`push_subscriptions?business_id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        morning_enabled: shared.morning_enabled !== false,
+        morning_hour: Number(shared.morning_hour ?? 8),
+        morning_minute: Number(shared.morning_minute ?? 0),
+        smart_changes_enabled: shared.smart_changes_enabled !== false,
+        closing_enabled: shared.closing_enabled === true,
+        closing_hour: Number(shared.closing_hour ?? 20),
+        closing_minute: Number(shared.closing_minute ?? 0),
+        updated_at: new Date().toISOString(),
+      }),
+    });
+  }
+
+  return { subscription: { ...subscription, business_id: id }, shared, businessId: id };
+}
+
 export async function POST(request: Request) {
   try {
-    const { deviceId, deviceSecret } = await request.json();
+    const { deviceId, deviceSecret, businessId } = await request.json();
     if (!deviceId || !deviceSecret) return NextResponse.json({ error: 'Datos incompletos.' }, { status: 400 });
     const subscription = await getAuthorizedSubscription(deviceId, deviceSecret);
     if (!subscription) return NextResponse.json({ error: 'Dispositivo no autorizado.' }, { status: 403 });
+    const context = await bindBusiness(request, subscription, businessId);
+    if (!context) return NextResponse.json({ error: 'No tenés acceso a ese comercio.' }, { status: 403 });
+    const source = context.shared;
     return NextResponse.json({
-      morningEnabled: subscription.morning_enabled !== false,
-      smartChangesEnabled: subscription.smart_changes_enabled !== false,
-      morningTime: timeFromParts(subscription.morning_hour, subscription.morning_minute, 8),
-      closingEnabled: subscription.closing_enabled === true,
-      closingTime: timeFromParts(subscription.closing_hour, subscription.closing_minute, 20),
+      morningEnabled: source.morning_enabled !== false,
+      smartChangesEnabled: source.smart_changes_enabled !== false,
+      morningTime: timeFromParts(source.morning_hour, source.morning_minute, 8),
+      closingEnabled: source.closing_enabled === true,
+      closingTime: timeFromParts(source.closing_hour, source.closing_minute, 20),
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error inesperado.' }, { status: 500 });
@@ -48,22 +94,25 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const { deviceId, deviceSecret, preferences } = await request.json();
+    const { deviceId, deviceSecret, businessId, preferences } = await request.json();
     if (!deviceId || !deviceSecret || !preferences) return NextResponse.json({ error: 'Datos incompletos.' }, { status: 400 });
     const subscription = await getAuthorizedSubscription(deviceId, deviceSecret);
     if (!subscription) return NextResponse.json({ error: 'Dispositivo no autorizado.' }, { status: 403 });
+    const context = await bindBusiness(request, subscription, businessId);
+    if (!context) return NextResponse.json({ error: 'No tenés acceso a ese comercio.' }, { status: 403 });
 
-    const morningTime = parseTime(preferences.morningTime ?? timeFromParts(subscription.morning_hour, subscription.morning_minute, 8));
-    const closingTime = parseTime(preferences.closingTime ?? timeFromParts(subscription.closing_hour, subscription.closing_minute, 20));
+    const source = context.shared;
+    const morningTime = parseTime(preferences.morningTime ?? timeFromParts(source.morning_hour, source.morning_minute, 8));
+    const closingTime = parseTime(preferences.closingTime ?? timeFromParts(source.closing_hour, source.closing_minute, 20));
     if (!morningTime || !closingTime) return NextResponse.json({ error: 'El horario elegido no es válido.' }, { status: 400 });
 
     const timezone = subscription.timezone || 'America/Argentina/Buenos_Aires';
     const localNow = localDateAndMinutes(timezone);
     const morningMinutes = morningTime.hour * 60 + morningTime.minute;
     const closingMinutes = closingTime.hour * 60 + closingTime.minute;
-    const morningTimeChanged = morningTime.hour !== Number(subscription.morning_hour ?? 8) || morningTime.minute !== Number(subscription.morning_minute ?? 0);
-    const closingTimeChanged = closingTime.hour !== Number(subscription.closing_hour ?? 20) || closingTime.minute !== Number(subscription.closing_minute ?? 0);
-    const closingWasEnabled = subscription.closing_enabled === true;
+    const morningTimeChanged = morningTime.hour !== Number(source.morning_hour ?? 8) || morningTime.minute !== Number(source.morning_minute ?? 0);
+    const closingTimeChanged = closingTime.hour !== Number(source.closing_hour ?? 20) || closingTime.minute !== Number(source.closing_minute ?? 0);
+    const closingWasEnabled = source.closing_enabled === true;
     const closingWillBeEnabled = preferences.closingEnabled === true;
 
     const patch: Record<string, unknown> = {
@@ -77,17 +126,19 @@ export async function PUT(request: Request) {
       updated_at: new Date().toISOString(),
     };
 
-    // Si el usuario elige para hoy una hora que ya pasó, no mandamos un push atrasado inmediatamente.
     if (morningTimeChanged && localNow.minutes >= morningMinutes) patch.last_morning_sent_date = localNow.date;
     if ((closingTimeChanged || (!closingWasEnabled && closingWillBeEnabled)) && localNow.minutes >= closingMinutes) patch.last_closing_sent_date = localNow.date;
 
-    const response = await supabaseRest(`push_subscriptions?device_id=eq.${encodeURIComponent(deviceId)}`, {
+    const path = context.businessId
+      ? `push_subscriptions?business_id=eq.${encodeURIComponent(context.businessId)}`
+      : `push_subscriptions?device_id=eq.${encodeURIComponent(deviceId)}`;
+    const response = await supabaseRest(path, {
       method: 'PATCH',
       headers: { Prefer: 'return=minimal' },
       body: JSON.stringify(patch),
     });
     if (!response.ok) return NextResponse.json({ error: 'No se pudieron guardar las preferencias.' }, { status: 500 });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, scope: context.businessId ? 'business' : 'device' });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error inesperado.' }, { status: 500 });
   }

@@ -41,6 +41,17 @@ export function getPushDeviceIdentity() {
   return { deviceId, deviceSecret };
 }
 
+async function pushHeaders(businessId?: string) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (businessId) {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) throw new Error('Volvé a iniciar sesión para sincronizar las notificaciones.');
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -54,7 +65,7 @@ export function getPushSupportStatus(): PushSupportStatus {
   return Notification.permission === 'granted' ? 'enabled' : 'default';
 }
 
-export async function enablePushNotifications() {
+export async function enablePushNotifications(businessId?: string) {
   if (getPushSupportStatus() === 'unsupported') throw new Error('Este dispositivo no soporta notificaciones web.');
 
   const permission = await Notification.requestPermission();
@@ -76,9 +87,10 @@ export async function enablePushNotifications() {
   const identity = getPushDeviceIdentity();
   const response = await fetch('/api/push/subscribe', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await pushHeaders(businessId),
     body: JSON.stringify({
       ...identity,
+      businessId: businessId || null,
       subscription: subscription.toJSON(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Argentina/Buenos_Aires',
     }),
@@ -115,12 +127,12 @@ export async function sendPushSnapshot(snapshot: Record<string, unknown>, event?
   }
 }
 
-export async function getPushPreferences(): Promise<PushPreferences> {
+export async function getPushPreferences(businessId?: string): Promise<PushPreferences> {
   const identity = getPushDeviceIdentity();
   const response = await fetch('/api/push/preferences', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(identity),
+    headers: await pushHeaders(businessId),
+    body: JSON.stringify({ ...identity, businessId: businessId || null }),
     cache: 'no-store',
   });
   const data = await response.json().catch(() => ({}));
@@ -134,12 +146,12 @@ export async function getPushPreferences(): Promise<PushPreferences> {
   };
 }
 
-export async function savePushPreferences(preferences: PushPreferences) {
+export async function savePushPreferences(preferences: PushPreferences, businessId?: string) {
   const identity = getPushDeviceIdentity();
   const response = await fetch('/api/push/preferences', {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...identity, preferences }),
+    headers: await pushHeaders(businessId),
+    body: JSON.stringify({ ...identity, businessId: businessId || null, preferences }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || 'No se pudieron guardar las preferencias.');

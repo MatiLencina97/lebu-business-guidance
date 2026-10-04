@@ -33,6 +33,7 @@ export function normalizedState(value: CloudState) {
   return {
     schemaVersion: 16,
     profitTarget: state.profitTarget ?? '',
+    targetMode: state.targetMode === 'break_even' ? 'break_even' : 'profit',
     periodType: state.periodType ?? 'monthly',
     periodStartDay: Number.isFinite(Number(state.periodStartDay)) ? Math.min(Math.max(Number(state.periodStartDay), 1), 31) : 1,
     historicalSummary: state.historicalSummary && typeof state.historicalSummary === 'object' ? {
@@ -164,6 +165,7 @@ export function mergeConcurrentCloudStates(baseInput: CloudState, localInput: Cl
   return {
     schemaVersion: 16,
     profitTarget: mergeConcurrentValue(base.profitTarget, local.profitTarget, remote.profitTarget),
+    targetMode: mergeConcurrentValue(base.targetMode, local.targetMode, remote.targetMode),
     periodType: mergeConcurrentValue(base.periodType, local.periodType, remote.periodType),
     periodStartDay: mergeConcurrentValue(base.periodStartDay, local.periodStartDay, remote.periodStartDay),
     historicalSummary: mergeConcurrentValue(base.historicalSummary, local.historicalSummary, remote.historicalSummary),
@@ -189,6 +191,7 @@ export function mergeConcurrentCloudStates(baseInput: CloudState, localInput: Cl
 export function hasMeaningfulData(state: CloudState) {
   const target = Number(String(state?.profitTarget || '').replace(/[^0-9]/g, '')) || 0;
   return target > 0
+    || state?.targetMode === 'break_even'
     || Boolean(state?.historicalSummary)
     || Boolean(state?.cashUpdatedAt)
     || (Array.isArray(state?.cashAdjustments) && state.cashAdjustments.length > 0)
@@ -228,6 +231,7 @@ export function mergeInitialCloudStates(local: CloudState, remote: CloudState, t
   return {
     schemaVersion: 16,
     profitTarget: preferLocalSettings ? local.profitTarget : remote.profitTarget,
+    targetMode: preferLocalSettings ? local.targetMode : remote.targetMode,
     periodType: preferLocalSettings ? local.periodType : remote.periodType,
     periodStartDay: preferLocalSettings ? local.periodStartDay : remote.periodStartDay,
     historicalSummary: preferLocalSettings ? local.historicalSummary : remote.historicalSummary,
@@ -293,6 +297,7 @@ export function withBusinessSettings(targetInput: CloudState, settingsInput: Clo
     // Cuando Cloud resolvió una versión más nueva, la aplicamos como bloque antes de continuar
     // con movimientos para que objetivo/período/días abiertos nunca queden desfasados.
     profitTarget: settings.profitTarget,
+    targetMode: settings.targetMode,
     periodType: settings.periodType,
     periodStartDay: settings.periodStartDay,
     historicalSummary: settings.historicalSummary,
@@ -312,6 +317,7 @@ export function settingsChanged(base: CloudState, local: CloudState) {
   return !sameValue(
     {
       profitTarget: a.profitTarget,
+      targetMode: a.targetMode,
       periodType: a.periodType,
       periodStartDay: a.periodStartDay,
       historicalSummary: a.historicalSummary,
@@ -325,6 +331,7 @@ export function settingsChanged(base: CloudState, local: CloudState) {
     },
     {
       profitTarget: b.profitTarget,
+      targetMode: b.targetMode,
       periodType: b.periodType,
       periodStartDay: b.periodStartDay,
       historicalSummary: b.historicalSummary,

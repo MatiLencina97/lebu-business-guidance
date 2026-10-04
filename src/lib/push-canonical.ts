@@ -248,7 +248,7 @@ function normalizedHistoricalSummary(value: unknown): HistoricalSummary | null {
 
 export async function buildCanonicalNotificationSnapshot(businessId: string, timezone: string) {
   const today = localDateISO(timezone || 'America/Argentina/Buenos_Aires');
-  const settingsRows = await jsonRows(`business_settings?business_id=eq.${encodeURIComponent(businessId)}&select=profit_target,period_type,period_start_day,historical_summary,open_weekdays,smart_distribution_enabled&limit=1`);
+  const settingsRows = await jsonRows(`business_settings?business_id=eq.${encodeURIComponent(businessId)}&select=profit_target,target_mode,period_type,period_start_day,historical_summary,open_weekdays,smart_distribution_enabled&limit=1`);
   const settings = settingsRows[0];
   if (!settings) throw new Error('El comercio no tiene configuración sincronizada.');
 
@@ -313,7 +313,9 @@ export async function buildCanonicalNotificationSnapshot(businessId: string, tim
   // contiene solo excesos reales sobre el importe previsto.
   const variableSpent = historicalExpenses + detailedExpensesTotal + recurringReconciliation.delta;
   const totalExpenses = recurringTotal + variableSpent;
-  const target = numberValue(settings.profit_target);
+  const targetMode = settings.target_mode === 'break_even' ? 'break_even' : 'profit';
+  const target = targetMode === 'break_even' ? 0 : numberValue(settings.profit_target);
+  const hasTarget = targetMode === 'break_even' || target > 0;
   const currentProfit = soldSoFar - totalExpenses;
   const missingProfit = Math.max(target - currentProfit, 0);
   // Un gasto real/importado no es automáticamente un costo variable. Sin clasificación
@@ -347,7 +349,7 @@ export async function buildCanonicalNotificationSnapshot(businessId: string, tim
   const referenceSmartActive = settings.smart_distribution_enabled !== false && referenceModel.ready;
   const reconstructedTargets = weightedTargets(remainingOpenDates, additionalBeforeToday, referenceModel, referenceSmartActive);
   const todayIsOpen = isDateOpen(today, openWeekdays, dayExceptions);
-  const referenceDailyTarget = target > 0 && todayIsOpen && remainingOpenDates[0] === today
+  const referenceDailyTarget = hasTarget && todayIsOpen && remainingOpenDates[0] === today
     ? Number(reconstructedTargets[today] || dailyNeeded || 0)
     : 0;
 
@@ -357,8 +359,9 @@ export async function buildCanonicalNotificationSnapshot(businessId: string, tim
     generatedAt: new Date().toISOString(),
     businessId,
     today,
-    hasTarget: target > 0,
-    goalReached: target > 0 && currentProfit >= target,
+    hasTarget,
+    targetMode,
+    goalReached: hasTarget && currentProfit >= target,
     additionalSalesNeeded,
     dailyNeeded,
     referenceDailyTarget,
