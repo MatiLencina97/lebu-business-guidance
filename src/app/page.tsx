@@ -2773,7 +2773,8 @@ export default function Home() {
       || JSON.stringify([...openWeekdays].sort()) !== JSON.stringify([...settingsDraft.openWeekdays].sort())
       || JSON.stringify(dayExceptions) !== JSON.stringify(settingsDraft.dayExceptions)
       || smartDistributionEnabled !== settingsDraft.smartDistributionEnabled;
-    const economicPlanChanged = target !== parseMoney(profitTarget)
+    const economicPlanChanged = targetMode !== settingsDraft.targetMode
+      || target !== parseMoney(profitTarget)
       || calendarChanged
       || Math.round(currentAdditionalRecurring) !== Math.round(nextAdditionalRecurring);
     if (economicPlanChanged) {
