@@ -47,7 +47,28 @@ async function bindBusiness(request: Request, subscription: any, businessId: unk
     `push_subscriptions?business_id=eq.${encodeURIComponent(id)}&select=*&order=updated_at.desc&limit=1`,
   );
   const rows = sharedResponse.ok ? await sharedResponse.json() : [];
-  return { subscription: { ...subscription, business_id: id }, shared: rows?.[0] || subscription, businessId: id };
+  const shared = rows?.[0] || subscription;
+
+  // Al abrir preferencias en cualquier dispositivo reconciliamos el resto del comercio.
+  // El permiso push sigue siendo local, pero horario/tipos de aviso son una preferencia compartida.
+  if (rows?.[0]) {
+    await supabaseRest(`push_subscriptions?business_id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        morning_enabled: shared.morning_enabled !== false,
+        morning_hour: Number(shared.morning_hour ?? 8),
+        morning_minute: Number(shared.morning_minute ?? 0),
+        smart_changes_enabled: shared.smart_changes_enabled !== false,
+        closing_enabled: shared.closing_enabled === true,
+        closing_hour: Number(shared.closing_hour ?? 20),
+        closing_minute: Number(shared.closing_minute ?? 0),
+        updated_at: new Date().toISOString(),
+      }),
+    });
+  }
+
+  return { subscription: { ...subscription, business_id: id }, shared, businessId: id };
 }
 
 export async function POST(request: Request) {
