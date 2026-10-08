@@ -1,5 +1,5 @@
-const SHELL_CACHE = 'lebu-v1-22-6-shell';
-const RUNTIME_CACHE = 'lebu-v1-22-6-runtime';
+const SHELL_CACHE = 'lebu-v1-23-3-shell';
+const RUNTIME_CACHE = 'lebu-v1-23-3-runtime';
 const APP_SHELL = [
   '/',
   '/offline.html',
