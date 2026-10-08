@@ -174,59 +174,44 @@ export function useProductionData(businessId: string | null, enabled = true) {
     return rows.map((row) => row.id);
   }, [businessId, refresh]);
 
-  const ensureDay = useCallback(async (date: string) => {
-    if (!businessId) throw new Error('Necesitás un negocio sincronizado para usar Producción.');
-    const now = new Date().toISOString();
-    const { error: writeError } = await supabase.from('business_production_days').upsert({
-      business_id: businessId,
-      production_date: date,
-      updated_at: now,
-    }, { onConflict: 'business_id,production_date' });
-    if (writeError) throw writeError;
-  }, [businessId]);
-
   const startDay = useCallback(async (date: string, opening: Array<{ productId: number; quantity: number }>) => {
-    await ensureDay(date);
-    const existingOpening = new Set(events.filter((event) => event.date === date && event.type === 'opening').map((event) => event.productId));
-    const drafts = opening
-      .filter((item) => item.quantity > 0 && !existingOpening.has(item.productId))
-      .map((item) => ({ productId: item.productId, date, type: 'opening' as const, quantity: item.quantity, note: 'Disponibilidad al abrir' }));
-    if (drafts.length) await addEvents(drafts);
-    else await refresh();
-  }, [addEvents, ensureDay, events, refresh]);
+    if (!businessId) throw new Error('Necesitás un negocio sincronizado para usar Producción.');
+    const openingRows = opening
+      .filter((item) => item.quantity > 0)
+      .map((item) => ({ id: createProductionId(), product_id: item.productId, quantity: item.quantity }));
+    const { error: writeError } = await supabase.rpc('lebu_start_production_day', {
+      target_business_id: businessId,
+      target_date: date,
+      opening_rows: openingRows,
+    });
+    if (writeError) throw writeError;
+    await refresh();
+  }, [businessId, refresh]);
 
   const closeDay = useCallback(async (date: string, closures: Array<{ productId: number; waste: number; carry: number }>) => {
     if (!businessId) throw new Error('Necesitás un negocio sincronizado para usar Producción.');
-    const now = new Date().toISOString();
-    const drafts: ProductionEventDraft[] = [];
-    for (const row of closures) {
-      if (row.waste > 0) drafts.push({ productId: row.productId, date, type: 'waste', quantity: row.waste, occurredAt: now, note: 'Cierre del día' });
-      if (row.carry > 0) drafts.push({ productId: row.productId, date, type: 'carry', quantity: row.carry, occurredAt: now, note: 'Pasa al próximo día' });
-    }
-    if (drafts.length) await addEvents(drafts);
-    const { error: writeError } = await supabase.from('business_production_days').upsert({
-      business_id: businessId,
-      production_date: date,
-      closed_at: now,
-      updated_at: now,
-    }, { onConflict: 'business_id,production_date' });
+    const closureRows = closures.map((row) => ({
+      product_id: row.productId,
+      waste: Math.max(Number(row.waste) || 0, 0),
+      carry: Math.max(Number(row.carry) || 0, 0),
+      waste_id: row.waste > 0 ? createProductionId() : null,
+      carry_id: row.carry > 0 ? createProductionId() : null,
+    }));
+    const { error: writeError } = await supabase.rpc('lebu_close_production_day', {
+      target_business_id: businessId,
+      target_date: date,
+      closure_rows: closureRows,
+    });
     if (writeError) throw writeError;
     await refresh();
-  }, [addEvents, businessId, refresh]);
+  }, [businessId, refresh]);
 
   const reopenDay = useCallback(async (date: string) => {
     if (!businessId) throw new Error('Necesitás un negocio sincronizado para usar Producción.');
-    // Reabrir elimina únicamente los eventos que generó el cierre automático para que un
-    // segundo cierre no duplique merma/carry. Los demás eventos del día quedan intactos.
-    const { error: closureError } = await supabase
-      .from('business_production_events')
-      .delete()
-      .eq('business_id', businessId)
-      .eq('production_date', date)
-      .eq('note', 'Cierre del día')
-      .in('event_type', ['waste', 'carry']);
-    if (closureError) throw closureError;
-    const { error: writeError } = await supabase.from('business_production_days').update({ closed_at: null, updated_at: new Date().toISOString() }).eq('business_id', businessId).eq('production_date', date);
+    const { error: writeError } = await supabase.rpc('lebu_reopen_production_day', {
+      target_business_id: businessId,
+      target_date: date,
+    });
     if (writeError) throw writeError;
     await refresh();
   }, [businessId, refresh]);

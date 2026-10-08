@@ -2,6 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { Activity, BellRing, Building2, CheckCircle2, RefreshCw, ShieldCheck, Target, Users } from 'lucide-react';
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co';
@@ -136,7 +137,7 @@ export default function AdminDashboard() {
           <ShieldCheck size={30} />
           <h1>Lebu Admin</h1>
           <p>Primero iniciá sesión en Lebu con una cuenta administradora y después volvé a <strong>/admin</strong>.</p>
-          <a className="admin-primary-button" href="/">Ir a Lebu</a>
+          <Link className="admin-primary-button" href="/">Ir a Lebu</Link>
         </div>
       </main>
     );
@@ -175,7 +176,7 @@ export default function AdminDashboard() {
           <button className="admin-secondary-button" onClick={() => void load(true)} disabled={refreshing}>
             <RefreshCw size={16} className={refreshing ? 'admin-spin' : ''} /> Actualizar
           </button>
-          <a className="admin-secondary-button" href="/">Volver a Lebu</a>
+          <Link className="admin-secondary-button" href="/">Volver a Lebu</Link>
         </div>
       </header>
 

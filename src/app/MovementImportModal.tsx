@@ -159,7 +159,7 @@ export default function MovementImportModal({ categories, existingSales, existin
       return;
     }
     setHeaderRow(detectHeaderRow(sheet.rows));
-  }, [sheetIndex, sheet?.name, knownPreset]);
+  }, [sheet, sheetIndex, knownPreset]);
 
   useEffect(() => {
     if (!sheet || !headers.length) return;
@@ -187,7 +187,7 @@ export default function MovementImportModal({ categories, existingSales, existin
     setConfigExpanded(true);
     setMapping(autoMapHeaders(headers));
     setKind(inferImportKind(headers));
-  }, [headerRow, sheetIndex, sheet?.name, profiles, knownPreset]);
+  }, [headerRow, sheetIndex, sheet, headers, profiles, knownPreset]);
 
   const existingMovements = kind === 'sale' ? existingSales : existingExpenses;
   const existingIds = useMemo(() => new Set(existingMovements.map((item) => item.id)), [existingMovements]);

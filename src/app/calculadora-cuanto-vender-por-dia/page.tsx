@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
@@ -37,7 +38,7 @@ export default function CalculadoraVentasPage() {
         <p>Porque las ventas también tienen costos variables. Esta calculadora ajusta el objetivo usando tu margen bruto: cuanto menor sea el margen, más facturación necesitás para cubrir los mismos gastos y obtener la misma ganancia.</p>
         <h2>De la cuenta al seguimiento diario</h2>
         <p>Lebu convierte tu objetivo mensual en una meta diaria y permite seguir ventas, gastos y progreso durante el período. Así podés saber si hoy estás por encima o por debajo del ritmo necesario.</p>
-        <a href="/" style={{display:"inline-block",marginTop:8,fontWeight:700}}>Conocé Lebu →</a>
+        <Link href="/" style={{display:"inline-block",marginTop:8,fontWeight:700}}>Conocé Lebu →</Link>
       </section>
       <p style={{marginTop:40,fontSize:13,opacity:.7}}>Resultado orientativo. No reemplaza asesoramiento contable o financiero.</p>
     </main>

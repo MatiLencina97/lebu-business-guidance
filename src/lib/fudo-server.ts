@@ -5,7 +5,8 @@ const AUTH_BASE = (process.env.FUDO_AUTH_BASE_URL || 'https://auth.fu.do/api').r
 const API_BASE = (process.env.FUDO_API_BASE_URL || 'https://api.fu.do/v1alpha1').replace(/\/$/, '');
 const AUTH_PATH = process.env.FUDO_AUTH_PATH || '/login';
 const SALES_PATH = process.env.FUDO_SALES_PATH || '/sales';
-const SALES_INCLUDE = process.env.FUDO_SALES_INCLUDE || 'payments,payments.paymentMethod';
+const SALES_INCLUDE = process.env.FUDO_SALES_INCLUDE || 'payments,payments.paymentMethod,items,items.product';
+const SALES_FALLBACK_INCLUDE = process.env.FUDO_SALES_FALLBACK_INCLUDE || 'payments,payments.paymentMethod';
 const PAGE_SIZE = 500;
 
 type FudoCredentials = { apiKey: string; apiSecret: string };
@@ -30,6 +31,13 @@ export type NormalizedFudoPayment = {
   isCash: boolean;
 };
 
+export type NormalizedFudoSaleItem = {
+  name: string;
+  quantity: number;
+  amount?: number;
+  category?: string;
+};
+
 export type NormalizedFudoSale = {
   externalId: string;
   date: string;
@@ -38,6 +46,7 @@ export type NormalizedFudoSale = {
   status: string;
   sourceUpdatedAt?: string;
   payments: NormalizedFudoPayment[];
+  items: NormalizedFudoSaleItem[];
   cashAmount: number;
   deleted: boolean;
   metadata: Record<string, unknown>;
@@ -231,6 +240,66 @@ function normalizePayments(saleEntity: any, body: any) {
   }).filter((payment: NormalizedFudoPayment) => payment.amount > 0);
 }
 
+function normalizeSaleItems(saleEntity: any, body: any): NormalizedFudoSaleItem[] {
+  const included = includedMap(body);
+  const relationNames = ['items', 'additions', 'adiciones', 'saleItems', 'sale_items', 'lines'];
+  let candidates: any[] = [];
+  for (const name of relationNames) {
+    const related = relationItems(saleEntity, name, included);
+    if (related.length) {
+      candidates = related;
+      break;
+    }
+  }
+
+  if (!candidates.length) {
+    const direct = unwrapAttributes(saleEntity);
+    for (const name of relationNames) {
+      const value = direct?.[name];
+      if (Array.isArray(value) && value.length) {
+        candidates = value;
+        break;
+      }
+    }
+  }
+
+  const result: NormalizedFudoSaleItem[] = [];
+  for (const raw of candidates) {
+    const item = unwrapAttributes(raw);
+    let product: any = null;
+    for (const relationName of ['product', 'item', 'menuItem', 'menu_item']) {
+      const related = relationItems(raw, relationName, included)[0];
+      if (related) {
+        product = unwrapAttributes(related);
+        break;
+      }
+    }
+    product ||= item?.product || item?.menuItem || item?.menu_item || {};
+
+    const name = String(
+      product?.name || product?.label || item?.productName || item?.product_name
+      || item?.name || item?.description || ''
+    ).trim();
+    if (!name) continue;
+
+    const quantity = Math.max(asFiniteNumber(item?.quantity ?? item?.qty ?? item?.count ?? 1), 0);
+    if (!(quantity > 0)) continue;
+    const amount = asFiniteNumber(item?.total ?? item?.amount ?? item?.subtotal ?? item?.price);
+    const category = String(
+      product?.category?.name || product?.categoryName || item?.category?.name
+      || item?.categoryName || item?.category || ''
+    ).trim();
+
+    result.push({
+      name,
+      quantity,
+      ...(amount > 0 ? { amount } : {}),
+      ...(category ? { category } : {}),
+    });
+  }
+  return result;
+}
+
 export function normalizeFudoSale(raw: any, responseBody: any): NormalizedFudoSale | null {
   const sale = unwrapAttributes(raw);
   const externalId = String(raw?.id ?? sale?.id ?? '').trim();
@@ -246,6 +315,7 @@ export function normalizeFudoSale(raw: any, responseBody: any): NormalizedFudoSa
   const lowered = status.toLocaleLowerCase('es-AR');
   const deleted = /cancel|void|anulad|refund|revers/.test(lowered);
   const payments = normalizePayments(raw, responseBody);
+  const items = normalizeSaleItems(raw, responseBody);
   const cashAmount = payments.filter((payment) => payment.isCash).reduce((sum, payment) => sum + payment.amount, 0);
   const sourceUpdatedAt = String(sale.updatedAt ?? sale.updated_at ?? sale.modifiedAt ?? sale.modified_at ?? '').trim() || undefined;
   return {
@@ -256,9 +326,10 @@ export function normalizeFudoSale(raw: any, responseBody: any): NormalizedFudoSa
     status,
     sourceUpdatedAt,
     payments,
+    items,
     cashAmount: Math.min(Math.max(cashAmount, 0), amount),
     deleted,
-    metadata: { status, source: 'fudo', ...(occurredAt ? { occurredAt } : {}) },
+    metadata: { status, source: 'fudo', ...(occurredAt ? { occurredAt } : {}), ...(items.length ? { items } : {}) },
   };
 }
 
@@ -282,7 +353,7 @@ async function fetchSalesPage(token: string, page: number, fromDate: string) {
   if (!response.ok && [400, 404, 422].includes(response.status)) {
     // Algunas cuentas/versiones pueden no aceptar los filtros JSON:API. En ese caso usamos
     // una consulta conservadora y filtramos las fechas en Lebu sin inventar parámetros.
-    const fallbackParams = new URLSearchParams({ include: SALES_INCLUDE });
+    const fallbackParams = new URLSearchParams({ include: SALES_FALLBACK_INCLUDE });
     fallbackParams.set('page[size]', String(PAGE_SIZE));
     fallbackParams.set('page[number]', String(page));
     response = await fetch(`${API_BASE}${SALES_PATH}?${fallbackParams}`, { headers: jsonHeaders(token), cache: 'no-store' });
