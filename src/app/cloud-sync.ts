@@ -92,6 +92,7 @@ const LEGACY_META_KEY = 'lebu-cloud-sync-meta-v1';
 const CLIENT_KEY = 'lebu-cloud-client-id-v1';
 const BUSINESS_CACHE_PREFIX = 'lebu-business-memberships-v1:';
 const LOCAL_STATE_OWNER_KEY = 'lebu-local-state-owner-user-v1';
+const LOCAL_STATE_CLAIM_EMAIL_KEY = 'lebu-local-state-claim-email-v1';
 
 function readBusinessCache(userId: string): CloudBusinessOption[] {
   try {
@@ -111,6 +112,18 @@ function readLocalStateOwnerUserId() {
 
 function writeLocalStateOwnerUserId(userId: string) {
   try { localStorage.setItem(LOCAL_STATE_OWNER_KEY, userId); } catch { /* La protección Cloud sigue funcionando por metadata cuando localStorage está disponible. */ }
+}
+
+function readLocalStateClaimEmail() {
+  try { return (localStorage.getItem(LOCAL_STATE_CLAIM_EMAIL_KEY) || '').trim().toLowerCase(); } catch { return ''; }
+}
+
+function writeLocalStateClaimEmail(email: string) {
+  try { localStorage.setItem(LOCAL_STATE_CLAIM_EMAIL_KEY, email.trim().toLowerCase()); } catch { /* Sin claim explícito, nunca sembramos Cloud desde estado local sin dueño. */ }
+}
+
+function clearLocalStateClaimEmail() {
+  try { localStorage.removeItem(LOCAL_STATE_CLAIM_EMAIL_KEY); } catch { /* opcional */ }
 }
 
 function getClientId() {
@@ -508,7 +521,11 @@ export function useLebuCloudSync({
         // Un dispositivo sin metadata sólo puede sembrar Cloud cuando el negocio está realmente vacío.
         // Si Cloud ya tiene datos/historial, remoto gana. Esto evita resucitar copias locales viejas.
         const localStateOwnerUserId = readLocalStateOwnerUserId();
-        const localStateBelongsToCurrentUser = !localStateOwnerUserId || localStateOwnerUserId === currentUser.id;
+        const currentEmail = (currentUser.email || '').trim().toLowerCase();
+        const explicitClaimMatches = !localStateOwnerUserId
+          && Boolean(currentEmail)
+          && readLocalStateClaimEmail() === currentEmail;
+        const localStateBelongsToCurrentUser = localStateOwnerUserId === currentUser.id || explicitClaimMatches;
         const canSeedCloud = currentMembership?.role === 'owner'
           && localStateBelongsToCurrentUser
           && hasMeaningfulData(localAtStart)
@@ -651,6 +668,7 @@ export function useLebuCloudSync({
     // El estado local queda asociado a la cuenta que terminó de reconciliarlo.
     // Si otra cuenta entra después en este navegador, nunca puede sembrar esos datos en un comercio vacío.
     writeLocalStateOwnerUserId(currentUser.id);
+    clearLocalStateClaimEmail();
   }, [applyRemoteState, fetchBusinesses]);
 
   useEffect(() => {
@@ -843,8 +861,11 @@ export function useLebuCloudSync({
 
   async function signUp(email: string, password: string) {
     setStatus('connecting'); setMessage('');
+    // Reclamar datos locales sin dueño solo es válido cuando el usuario crea expresamente
+    // esta cuenta desde este mismo navegador. Un simple login nunca puede heredarlos.
+    writeLocalStateClaimEmail(email);
     const { data, error } = await supabase.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo: `${AUTH_REDIRECT_URL}/?auth_confirmed=1` } });
-    if (error) { setStatus('error'); setMessage(error.message); throw error; }
+    if (error) { clearLocalStateClaimEmail(); setStatus('error'); setMessage(error.message); throw error; }
     if (!data.session) {
       setStatus('signed-out');
       setMessage('Cuenta creada. Revisá tu mail para confirmar y después ingresá desde Lebu.');
