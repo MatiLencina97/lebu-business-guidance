@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
@@ -45,7 +46,7 @@ export default function PrecioVentaPage() {
       <p>Usá el costo completo de la unidad: materia prima o compra, packaging y otros costos variables que correspondan. Si una plataforma o medio de pago cobra un porcentaje, agregalo como comisión.</p>
       <h2>Convertí el precio en un objetivo de ventas</h2>
       <p>Lebu te ayuda a conectar precios, gastos y objetivos para saber cuánto necesitás vender durante el período y si venís al ritmo necesario.</p>
-      <a href="/" style={{fontWeight:700}}>Conocé Lebu →</a><span> · </span><a href="/calculadora-margen-ganancia">Calculá tu margen actual →</a>
+      <Link href="/" style={{fontWeight:700}}>Conocé Lebu →</Link><span> · </span><Link href="/calculadora-margen-ganancia">Calculá tu margen actual →</Link>
     </section>
     <p style={{marginTop:40,fontSize:13,opacity:.7}}>Resultado orientativo. No reemplaza asesoramiento contable o financiero.</p>
   </main>;
