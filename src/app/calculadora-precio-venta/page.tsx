@@ -13,7 +13,9 @@ export default function PrecioVentaPage() {
     const c = Math.max(0, costo);
     const m = Math.min(99, Math.max(0, margen)) / 100;
     const fee = Math.min(99, Math.max(0, comision)) / 100;
-    const precio = c / Math.max(0.01, 1 - m - fee);
+    const availableShare = 1 - m - fee;
+    if (availableShare <= 0) return null;
+    const precio = c / availableShare;
     return { precio, ganancia: precio * m, comisionPesos: precio * fee };
   }, [costo, margen, comision]);
 
@@ -27,9 +29,14 @@ export default function PrecioVentaPage() {
       <label>Comisión sobre la venta (%)<input aria-label="Comisión sobre la venta" type="number" min="0" max="99" value={comision} onChange={e=>setComision(Number(e.target.value))} style={inputStyle} /></label>
     </section>
     <section style={{marginTop:32,padding:24,border:"1px solid currentColor",borderRadius:16}}>
-      <p>Precio de venta sugerido</p><h2>{money.format(r.precio)}</h2>
-      <p>Ganancia objetivo por unidad: <strong>{money.format(r.ganancia)}</strong></p>
-      <p>Comisión estimada: <strong>{money.format(r.comisionPesos)}</strong></p>
+      {r ? <>
+        <p>Precio de venta sugerido</p><h2>{money.format(r.precio)}</h2>
+        <p>Ganancia objetivo por unidad: <strong>{money.format(r.ganancia)}</strong></p>
+        <p>Comisión estimada: <strong>{money.format(r.comisionPesos)}</strong></p>
+      </> : <>
+        <p><strong>No existe un precio válido con estos porcentajes.</strong></p>
+        <p>El margen deseado más la comisión deben sumar menos de 100%. Bajá alguno de los dos valores para poder calcular un precio sostenible.</p>
+      </>}
     </section>
     <section style={{marginTop:32}}>
       <h2>¿Por qué no alcanza con sumar un porcentaje al costo?</h2>
