@@ -10,7 +10,7 @@
     "qa": "node scripts/qa-regression.mjs"
   },
   "dependencies": {
-    "next": "16.3.0",
+    "next": "16.4.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "lucide-react": "^0.468.0",
@@ -26,7 +26,7 @@
     "tailwindcss": "^4.0.0",
     "@tailwindcss/postcss": "^4.0.0",
     "eslint": "^9.0.0",
-    "eslint-config-next": "16.3.0",
+    "eslint-config-next": "16.4.0",
     "@types/web-push": "^3.6.4"
   }
 }
