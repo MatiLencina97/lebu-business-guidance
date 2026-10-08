@@ -18,6 +18,9 @@ assert.match(calculator, /No existe un precio válido/);
 const cloud = read('src/app/cloud-sync.ts');
 assert.match(cloud, /LOCAL_STATE_OWNER_KEY/);
 assert.match(cloud, /localStateBelongsToCurrentUser/);
+assert.match(cloud, /LOCAL_STATE_CLAIM_EMAIL_KEY/);
+assert.match(cloud, /explicitClaimMatches/);
+assert.match(cloud, /writeLocalStateClaimEmail\(email\)/);
 assert.match(cloud, /writeLocalStateOwnerUserId\(currentUser\.id\)/);
 
 const cron = read('src/app/api/cron/morning-push/route.ts');
