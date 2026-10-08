@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
+const inputStyle = {display:"block",width:"100%",padding:12,marginTop:6,border:"1px solid #9ca3af",borderRadius:10,background:"#ffffff",color:"#111827",boxShadow:"0 1px 2px rgba(0,0,0,.06)"};
 
 export default function PuntoEquilibrioPage() {
   const [fijos, setFijos] = useState(7000000);
@@ -22,10 +23,10 @@ export default function PuntoEquilibrioPage() {
     <h1>Calculadora de punto de equilibrio</h1>
     <p>Descubrí cuánto necesita vender tu negocio para cubrir sus costos sin perder plata.</p>
     <section style={{display:"grid",gap:16,marginTop:32}}>
-      <label>Costos fijos mensuales ($)<input aria-label="Costos fijos" type="number" min="0" value={fijos} onChange={e=>setFijos(Number(e.target.value))} style={{display:"block",width:"100%",padding:12,marginTop:6}} /></label>
-      <label>Precio de venta promedio ($)<input aria-label="Precio de venta" type="number" min="0" value={precio} onChange={e=>setPrecio(Number(e.target.value))} style={{display:"block",width:"100%",padding:12,marginTop:6}} /></label>
-      <label>Costo variable por venta ($)<input aria-label="Costo variable" type="number" min="0" value={variable} onChange={e=>setVariable(Number(e.target.value))} style={{display:"block",width:"100%",padding:12,marginTop:6}} /></label>
-      <label>Días abiertos por mes<input aria-label="Días abiertos" type="number" min="1" max="31" value={dias} onChange={e=>setDias(Number(e.target.value))} style={{display:"block",width:"100%",padding:12,marginTop:6}} /></label>
+      <label>Costos fijos mensuales ($)<input aria-label="Costos fijos" type="number" min="0" value={fijos} onChange={e=>setFijos(Number(e.target.value))} style={inputStyle} /></label>
+      <label>Precio de venta promedio ($)<input aria-label="Precio de venta" type="number" min="0" value={precio} onChange={e=>setPrecio(Number(e.target.value))} style={inputStyle} /></label>
+      <label>Costo variable por venta ($)<input aria-label="Costo variable" type="number" min="0" value={variable} onChange={e=>setVariable(Number(e.target.value))} style={inputStyle} /></label>
+      <label>Días abiertos por mes<input aria-label="Días abiertos" type="number" min="1" max="31" value={dias} onChange={e=>setDias(Number(e.target.value))} style={inputStyle} /></label>
     </section>
     <section style={{marginTop:32,padding:24,border:"1px solid currentColor",borderRadius:16}}>
       {r ? <><p>Margen de contribución: <strong>{money.format(r.contribucion)} ({r.margen.toFixed(1)}%)</strong></p><p>Unidades para cubrir costos</p><h2>{r.unidades.toLocaleString("es-AR")}</h2><p>Facturación mensual de equilibrio</p><h2>{money.format(r.ventas)}</h2><p>Equivale aproximadamente a <strong>{money.format(r.diario)} por día</strong>.</p></> : <p><strong>No existe punto de equilibrio con estos valores.</strong> El precio debe ser mayor que el costo variable.</p>}

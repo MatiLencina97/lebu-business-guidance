@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
+const inputStyle = {display:"block",width:"100%",padding:12,marginTop:6,border:"1px solid #9ca3af",borderRadius:10,background:"#ffffff",color:"#111827",boxShadow:"0 1px 2px rgba(0,0,0,.06)"};
 
 export default function PrecioVentaPage() {
   const [costo, setCosto] = useState(2500);
@@ -21,9 +22,9 @@ export default function PrecioVentaPage() {
     <h1>Calculadora de precio de venta</h1>
     <p>Calculá a qué precio vender un producto para alcanzar el margen que buscás, incluyendo comisiones sobre la venta.</p>
     <section style={{display:"grid",gap:16,marginTop:32}}>
-      <label>Costo total por unidad ($)<input aria-label="Costo total por unidad" type="number" min="0" value={costo} onChange={e=>setCosto(Number(e.target.value))} style={{display:"block",width:"100%",padding:12,marginTop:6}} /></label>
-      <label>Margen deseado (%)<input aria-label="Margen deseado" type="number" min="0" max="99" value={margen} onChange={e=>setMargen(Number(e.target.value))} style={{display:"block",width:"100%",padding:12,marginTop:6}} /></label>
-      <label>Comisión sobre la venta (%)<input aria-label="Comisión sobre la venta" type="number" min="0" max="99" value={comision} onChange={e=>setComision(Number(e.target.value))} style={{display:"block",width:"100%",padding:12,marginTop:6}} /></label>
+      <label>Costo total por unidad ($)<input aria-label="Costo total por unidad" type="number" min="0" value={costo} onChange={e=>setCosto(Number(e.target.value))} style={inputStyle} /></label>
+      <label>Margen deseado (%)<input aria-label="Margen deseado" type="number" min="0" max="99" value={margen} onChange={e=>setMargen(Number(e.target.value))} style={inputStyle} /></label>
+      <label>Comisión sobre la venta (%)<input aria-label="Comisión sobre la venta" type="number" min="0" max="99" value={comision} onChange={e=>setComision(Number(e.target.value))} style={inputStyle} /></label>
     </section>
     <section style={{marginTop:32,padding:24,border:"1px solid currentColor",borderRadius:16}}>
       <p>Precio de venta sugerido</p><h2>{money.format(r.precio)}</h2>
