@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarDays,
   ChevronLeft,
@@ -111,9 +111,14 @@ export default function EventsView(props: Props) {
   const [draft, setDraft] = useState<DraftState>(() => blankDraft(today, props.suggestedAverageTicket));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const averageTicketSuggestionAppliedRef = useRef(props.suggestedAverageTicket > 0);
 
   useEffect(() => {
-    if (draft.id || draft.averageTicket || props.suggestedAverageTicket <= 0) return;
+    // Si el promedio llega después de hidratar ventas, lo sugerimos una sola vez.
+    // Desde ese momento el campo queda 100% bajo control del usuario: borrar, dejar vacío o escribir 0
+    // no vuelve a disparar el valor sugerido.
+    if (averageTicketSuggestionAppliedRef.current || draft.id || draft.averageTicket || props.suggestedAverageTicket <= 0) return;
+    averageTicketSuggestionAppliedRef.current = true;
     setDraft((current) => ({ ...current, averageTicket: String(Math.round(props.suggestedAverageTicket)) }));
   }, [draft.id, draft.averageTicket, props.suggestedAverageTicket]);
 

@@ -3855,3 +3855,134 @@ html[data-theme='dark'] .events-feasible { color:#70c8b5; }
   .mobile-nav-item { font-size:7px; padding-inline:1px; }
   .mobile-nav-item svg { width:17px; height:17px; }
 }
+
+
+/* 1.23.2 — controles sin solapamientos */
+.sales-channel-fee-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px 40px;
+  align-items: center;
+  gap: 8px;
+}
+.sales-channel-fee-row > * { min-width: 0; }
+.sales-channel-fee-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #fbfcfb;
+  transition: .16s ease;
+}
+.sales-channel-fee-control:focus-within {
+  border-color: #8eb4a7;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(155,205,184,.18);
+}
+.sales-channel-fee-number {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 12px 9px 12px 12px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 850;
+  text-align: right;
+  outline: none;
+}
+.sales-channel-fee-control > span {
+  display: grid;
+  place-items: center;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+/* Cada bloque recurrente tiene su propia fila. Antes "Monto aproximado" y
+   "Ya estaba incluido..." compartían grid-area: covered y podían dibujarse uno encima del otro. */
+.recurring-covered-toggle { grid-area: auto; }
+.recurring-approx-toggle { grid-area: approximate; }
+.recurring-history-covered-toggle { grid-area: covered; }
+
+.recurring-row {
+  grid-template-columns: minmax(0,1fr) 145px 130px 42px;
+  grid-template-areas:
+    "main amount frequency delete"
+    "payment payment payment payment"
+    "progress progress progress progress"
+    "history history history history"
+    "approximate approximate approximate approximate"
+    "covered covered covered covered";
+}
+.recurring-row .recurring-amount-field,
+.recurring-row .recurring-frequency-field,
+.recurring-row .money-input,
+.recurring-row .field-input,
+.recurring-row .recurring-payment-control,
+.recurring-row .recurring-history-controls { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.recurring-payment-row {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(220px,280px);
+  align-items: end;
+}
+.recurring-payment-control { width: 100%; }
+.recurring-payment-control-double { grid-template-columns: repeat(2, minmax(0,1fr)); }
+
+.new-recurring-grid {
+  grid-template-columns: minmax(0,1fr) 160px 145px auto;
+  grid-template-areas:
+    "name amount frequency add"
+    "approximate approximate approximate approximate";
+  align-items: end;
+}
+.new-recurring-name-field { grid-area: name; }
+.new-recurring-amount-field { grid-area: amount; }
+.new-recurring-frequency-field { grid-area: frequency; }
+.new-recurring-add { grid-area: add; }
+.new-recurring-approx-toggle { grid-area: approximate; width: 100%; margin-top: 2px; }
+.new-recurring-grid .field-input,
+.new-recurring-grid .money-input { min-width: 0; max-width: 100%; box-sizing: border-box; }
+
+html[data-theme='dark'] .sales-channel-fee-control { background: var(--surface); }
+html[data-theme='dark'] .sales-channel-fee-control:focus-within { background: #0d2326; }
+
+@media (max-width: 639px) {
+  .sales-channel-fee-row {
+    grid-template-columns: minmax(0,1fr) 40px;
+    grid-template-areas:
+      "name delete"
+      "fee fee";
+  }
+  .sales-channel-fee-row > .field-input { grid-area: name; }
+  .sales-channel-fee-row > .sales-channel-fee-control { grid-area: fee; }
+  .sales-channel-fee-row > .icon-button { grid-area: delete; }
+  .sales-channel-fee-control { grid-template-columns: minmax(0,1fr) 42px; }
+
+  .recurring-row {
+    grid-template-columns: minmax(0,1fr) 40px;
+    grid-template-areas:
+      "main delete"
+      "amount amount"
+      "frequency frequency"
+      "payment payment"
+      "progress progress"
+      "history history"
+      "approximate approximate"
+      "covered covered";
+  }
+  .recurring-payment-row { grid-template-columns: minmax(0,1fr); align-items: stretch; }
+  .recurring-field-label { display: block; }
+
+  .new-recurring-grid {
+    grid-template-columns: minmax(0,1fr);
+    grid-template-areas:
+      "name"
+      "amount"
+      "frequency"
+      "approximate"
+      "add";
+  }
+}

@@ -695,7 +695,7 @@ const initialRecurringCosts: RecurringCost[] = [];
 const initialSales: Sale[] = [];
 const initialExpenses: Expense[] = [];
 
-const APP_VERSION = '1.23.1';
+const APP_VERSION = '1.23.2';
 const STORAGE_KEY = 'lebu-v1-data';
 const LEGACY_STORAGE_KEYS = ['lebu-v011-demo', 'lebu-v010-demo', 'tarasca-v09-demo', 'tarasca-v08-demo', 'tarasca-v07-demo'];
 
@@ -4351,12 +4351,12 @@ export default function Home() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2"><h3 className="text-sm font-black">Canales de venta y comisiones</h3><HelpTip text="Lebu conserva la facturación bruta y descuenta esta tasa al calcular ganancia. Además usa el mix observado de canales para estimar cuánto necesitás vender en bruto hacia adelante." /></div>
-                <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Configurá marketplaces o medios que retienen un porcentaje de cada venta. Por ejemplo, PedidosYa 30%.</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Configurá marketplaces o medios que retienen un porcentaje de cada venta. Por ejemplo, PedidosYa 33,7%.</p>
               </div>
             </div>
             <div className="mt-4 space-y-2">
               {settingsDraft.salesChannelFees.map((rule) => (
-                <div key={rule.id} className="grid grid-cols-[minmax(0,1fr)_90px_40px] items-center gap-2">
+                <div key={rule.id} className="sales-channel-fee-row">
                   <input
                     value={rule.name}
                     onChange={(event) => setSettingsDraft((draft) => ({ ...draft, salesChannelFees: draft.salesChannelFees.map((item) => item.id === rule.id ? { ...item, name: event.target.value } : item) }))}
@@ -4364,15 +4364,15 @@ export default function Home() {
                     placeholder="Ej. PedidosYa"
                     aria-label="Canal de venta"
                   />
-                  <div className="relative">
+                  <div className="sales-channel-fee-control">
                     <input
                       inputMode="decimal"
                       value={String(rule.feePct)}
                       onChange={(event) => setSettingsDraft((draft) => ({ ...draft, salesChannelFees: draft.salesChannelFees.map((item) => item.id === rule.id ? { ...item, feePct: Math.min(Number(event.target.value.replace(/[^0-9.,]/g, '').replace(',', '.')) || 0, 100) } : item) }))}
-                      className="field-input pr-7 text-right"
+                      className="sales-channel-fee-number"
                       aria-label={`Comisión de ${rule.name || 'canal'}`}
                     />
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-[var(--muted)]">%</span>
+                    <span aria-hidden="true">%</span>
                   </div>
                   <button
                     type="button"
@@ -4620,7 +4620,7 @@ export default function Home() {
                       compact
                     />
                   </div>
-                  <label className="recurring-covered-toggle">
+                  <label className="recurring-covered-toggle recurring-approx-toggle">
                     <input type="checkbox" checked={Boolean(item.amountApproximate)} onChange={(event) => setSettingsDraft((draft) => ({ ...draft, recurringCosts: draft.recurringCosts.map((current) => current.id === item.id ? { ...current, amountApproximate: event.target.checked } : current) }))} className="recurring-covered-checkbox accent-[var(--brand)]" />
                     <span className="recurring-covered-copy"><strong>Monto aproximado</strong><small>Lebu lo usa para proyectar. Los pagos vinculados se acumulan y, mientras quede saldo, mantiene la previsión pendiente.</small></span>
                   </label>
@@ -4716,7 +4716,7 @@ export default function Home() {
                     </div>
                   )}
                   {result.historicalSummaryActive && historicalSummary?.expensesIncludeRecurring && (
-                    <label className="recurring-covered-toggle">
+                    <label className="recurring-covered-toggle recurring-history-covered-toggle">
                       <input type="checkbox" checked={settingsCoveredRecurringIds.includes(item.id)} onChange={(event) => setSettingsCoveredRecurringIds((ids) => event.target.checked ? Array.from(new Set([...ids, item.id])) : ids.filter((id) => id !== item.id))} className="recurring-covered-checkbox accent-[var(--brand)]" />
                       <span className="recurring-covered-copy"><strong>Ya estaba incluido en mis gastos acumulados</strong><small>No duplica lo ya cargado. Lo que vuelva a ocurrir después del acumulado sí cuenta.</small></span>
                     </label>
@@ -4742,7 +4742,7 @@ export default function Home() {
                   <span className="recurring-field-label">Monto</span>
                   <MoneyInput value={newRecurring.amount} onChange={(value) => setNewRecurring((current) => ({ ...current, amount: value }))} compact />
                 </label>
-                <label className="recurring-covered-toggle">
+                <label className="recurring-covered-toggle new-recurring-approx-toggle">
                   <input type="checkbox" checked={newRecurring.amountApproximate} onChange={(event) => setNewRecurring((current) => ({ ...current, amountApproximate: event.target.checked }))} className="recurring-covered-checkbox accent-[var(--brand)]" />
                   <span className="recurring-covered-copy"><strong>Es un monto aproximado</strong><small>Útil para servicios, impuestos u otros gastos que existen pero varían. El gasto real reemplaza esta estimación al conciliarse.</small></span>
                 </label>
