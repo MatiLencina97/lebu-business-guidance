@@ -1,10 +1,11 @@
 import { supabaseRest } from './push-server';
 import { resolveRecurringConfig, type RecurringHistoryEntry } from './recurring-history';
 import { reconcileRecurringExpenses, type RecurringReconciliationSchedule } from './recurring-reconciliation';
+import { normalizeSalesChannelFeeRules, saleChannelFee, type SalesChannelFeeRule } from '../app/sales-channels';
 
 type PeriodType = 'weekly' | 'biweekly' | 'monthly';
 type DayException = { date: string; open: boolean };
-type Sale = { date: string; amount: number };
+type Sale = { date: string; amount: number; channel?: string; sourceMetadata?: Record<string, unknown>; paymentBreakdown?: Array<{ methodName?: string; amount?: number }> };
 type Expense = { date: string; amount: number; category?: string; note?: string; recurringCostId?: number; recurringOccurrenceDate?: string };
 type RecurringCost = { id: number; name?: string; amount: number; frequency: PeriodType; amountApproximate?: boolean; paymentSchedule?: RecurringReconciliationSchedule | null; configHistory?: RecurringHistoryEntry[] };
 
@@ -248,7 +249,7 @@ function normalizedHistoricalSummary(value: unknown): HistoricalSummary | null {
 
 export async function buildCanonicalNotificationSnapshot(businessId: string, timezone: string) {
   const today = localDateISO(timezone || 'America/Argentina/Buenos_Aires');
-  const settingsRows = await jsonRows(`business_settings?business_id=eq.${encodeURIComponent(businessId)}&select=profit_target,target_mode,period_type,period_start_day,historical_summary,open_weekdays,smart_distribution_enabled&limit=1`);
+  const settingsRows = await jsonRows(`business_settings?business_id=eq.${encodeURIComponent(businessId)}&select=profit_target,target_mode,period_type,period_start_day,historical_summary,open_weekdays,smart_distribution_enabled,sales_channel_fees&limit=1`);
   const settings = settingsRows[0];
   if (!settings) throw new Error('El comercio no tiene configuración sincronizada.');
 
@@ -256,16 +257,23 @@ export async function buildCanonicalNotificationSnapshot(businessId: string, tim
   const period = currentPeriod(today, periodType, Number(settings.period_start_day || 1));
   const openWeekdays = Array.isArray(settings.open_weekdays) ? settings.open_weekdays.map(Number) : [];
   const historicalSummary = normalizedHistoricalSummary(settings.historical_summary);
+  const salesChannelFees: SalesChannelFeeRule[] = normalizeSalesChannelFeeRules(settings.sales_channel_fees);
   const historyCutoff = addDays(today, -84);
 
   const [saleRows, expenseRows, recurringRows, exceptionRows] = await Promise.all([
-    jsonRows(`business_sales?business_id=eq.${encodeURIComponent(businessId)}&deleted_at=is.null&sale_date=gte.${historyCutoff}&select=sale_date,amount`),
+    jsonRows(`business_sales?business_id=eq.${encodeURIComponent(businessId)}&deleted_at=is.null&sale_date=gte.${historyCutoff}&select=sale_date,amount,source_metadata,payment_breakdown`),
     jsonRows(`business_expenses?business_id=eq.${encodeURIComponent(businessId)}&deleted_at=is.null&expense_date=gte.${period.start}&expense_date=lte.${period.end}&select=expense_date,amount,category,note,recurring_cost_id,recurring_occurrence_date`),
     jsonRows(`business_recurring_costs?business_id=eq.${encodeURIComponent(businessId)}&deleted_at=is.null&select=id,name,amount,frequency,amount_is_estimate,payment_schedule,config_history`),
     jsonRows(`business_day_exceptions?business_id=eq.${encodeURIComponent(businessId)}&deleted_at=is.null&exception_date=gte.${period.start}&exception_date=lte.${period.end}&select=exception_date,is_open`),
   ]);
 
-  const sales: Sale[] = saleRows.map((row: any) => ({ date: String(row.sale_date), amount: numberValue(row.amount) }));
+  const sales: Sale[] = saleRows.map((row: any) => ({
+    date: String(row.sale_date),
+    amount: numberValue(row.amount),
+    channel: typeof row.source_metadata?.channel === 'string' ? row.source_metadata.channel : undefined,
+    sourceMetadata: row.source_metadata && typeof row.source_metadata === 'object' ? row.source_metadata : undefined,
+    paymentBreakdown: Array.isArray(row.payment_breakdown) ? row.payment_breakdown : undefined,
+  }));
   const expenses: Expense[] = expenseRows.map((row: any) => ({ date: String(row.expense_date), amount: numberValue(row.amount), category: row.category || undefined, note: row.note || undefined, recurringCostId: row.recurring_cost_id == null ? undefined : Number(row.recurring_cost_id), recurringOccurrenceDate: row.recurring_occurrence_date || undefined }));
   const recurring: RecurringCost[] = recurringRows.map((row: any) => ({
     id: Number(row.id),
@@ -298,7 +306,9 @@ export async function buildCanonicalNotificationSnapshot(businessId: string, tim
   const periodExpenses = expenses.filter((expense) => expense.date >= period.start && expense.date <= period.end && !dateCoveredBySummary(expense.date, 'expense'));
   const historicalSales = summaryCoversSales && historicalSummary ? numberValue(historicalSummary.salesTotal) : 0;
   const historicalExpenses = summaryCoversExpenses && historicalSummary ? numberValue(historicalSummary.expensesTotal) : 0;
-  const soldSoFar = historicalSales + periodSales.reduce((sum, sale) => sum + sale.amount, 0);
+  const detailedSalesGross = periodSales.reduce((sum, sale) => sum + sale.amount, 0);
+  const soldSoFar = historicalSales + detailedSalesGross;
+  const channelFees = periodSales.reduce((sum, sale) => sum + saleChannelFee(sale, salesChannelFees).fee, 0);
 
   const coveredIds = new Set(summaryCoversExpenses ? coveredRecurringIds(historicalSummary, recurring) : []);
   const recurringConfiguredTotal = recurring.reduce((sum, item) => sum + prorateRecurringCost(item, period.start, period.end, periodType, period.start, period.end), 0);
@@ -312,16 +322,17 @@ export async function buildCanonicalNotificationSnapshot(businessId: string, tim
   // 1.22.3: un pago parcial conciliado no achica la obligación recurrente. El delta
   // contiene solo excesos reales sobre el importe previsto.
   const variableSpent = historicalExpenses + detailedExpensesTotal + recurringReconciliation.delta;
-  const totalExpenses = recurringTotal + variableSpent;
+  const totalExpensesBeforeChannelFees = recurringTotal + variableSpent;
+  const totalExpenses = totalExpensesBeforeChannelFees + channelFees;
   const targetMode = settings.target_mode === 'break_even' ? 'break_even' : 'profit';
   const target = targetMode === 'break_even' ? 0 : numberValue(settings.profit_target);
   const hasTarget = targetMode === 'break_even' || target > 0;
   const currentProfit = soldSoFar - totalExpenses;
   const missingProfit = Math.max(target - currentProfit, 0);
-  // Un gasto real/importado no es automáticamente un costo variable. Sin clasificación
-  // explícita, el cálculo canónico de notificaciones no inventa una tasa sobre ventas futuras.
-  const variableRate = 0;
-  const contributionMargin = 1;
+  // Las comisiones por canal sí son variables y explícitas. Proyectamos el mix observado
+  // del período detallado; otros gastos continúan sin extrapolarse como porcentaje de venta.
+  const variableRate = detailedSalesGross > 0 ? Math.min(Math.max(channelFees / detailedSalesGross, 0), 0.95) : 0;
+  const contributionMargin = Math.max(1 - variableRate, 0.05);
   const additionalSalesNeeded = missingProfit / contributionMargin;
 
   const analysisSales = summaryCoversSales && historicalSummary
@@ -338,12 +349,14 @@ export async function buildCanonicalNotificationSnapshot(businessId: string, tim
     return acc;
   }, {});
   const todaySales = Number(salesByDate[today] || 0);
+  const todayChannelFees = periodSales.filter((sale) => sale.date === today).reduce((sum, sale) => sum + saleChannelFee(sale, salesChannelFees).fee, 0);
   const soldBeforeToday = Math.max(soldSoFar - todaySales, 0);
-  const profitBeforeToday = soldBeforeToday - totalExpenses;
+  const channelFeesBeforeToday = Math.max(channelFees - todayChannelFees, 0);
+  const profitBeforeToday = soldBeforeToday - (totalExpensesBeforeChannelFees + channelFeesBeforeToday);
   const missingProfitBeforeToday = Math.max(target - profitBeforeToday, 0);
-  // Misma regla para la referencia diaria enviada por push: sin clasificación explícita,
-  // los gastos históricos no se extrapolan como porcentaje de las ventas futuras.
-  const marginBeforeToday = 1;
+  const detailedSalesBeforeToday = periodSales.filter((sale) => sale.date < today).reduce((sum, sale) => sum + sale.amount, 0);
+  const rateBeforeToday = detailedSalesBeforeToday > 0 ? Math.min(Math.max(channelFeesBeforeToday / detailedSalesBeforeToday, 0), 0.95) : variableRate;
+  const marginBeforeToday = Math.max(1 - rateBeforeToday, 0.05);
   const additionalBeforeToday = missingProfitBeforeToday / marginBeforeToday;
   const referenceModel = smartModel(analysisSales.filter((sale) => sale.date < today), openWeekdays, today);
   const referenceSmartActive = settings.smart_distribution_enabled !== false && referenceModel.ready;
@@ -369,6 +382,8 @@ export async function buildCanonicalNotificationSnapshot(businessId: string, tim
     currentProfit,
     soldSoFar,
     variableSpent,
+    channelFees,
+    variableRate,
     totalExpenses,
     target,
     periodStart: period.start,
