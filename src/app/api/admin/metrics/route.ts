@@ -32,7 +32,7 @@ type UserSummary = {
 
 type BusinessRow = { id: string; name: string; created_at: string; updated_at: string | null };
 type MemberRow = { business_id: string; user_id: string; role: string; member_email: string | null; created_at: string | null; updated_at: string | null };
-type SettingsRow = { business_id: string; profit_target: number | string | null; historical_summary: unknown; updated_at: string | null };
+type SettingsRow = { business_id: string; profit_target: number | string | null; target_mode?: string | null; historical_summary: unknown; updated_at: string | null };
 type ActivityRow = { business_id: string; updated_at: string | null; deleted_at?: string | null };
 
 export async function GET(request: NextRequest) {
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
       listAllUsers(),
       admin.from('businesses').select('id,name,created_at,updated_at').order('created_at', { ascending: false }),
       admin.from('business_members').select('business_id,user_id,role,member_email,created_at,updated_at'),
-      admin.from('business_settings').select('business_id,profit_target,historical_summary,updated_at'),
+      admin.from('business_settings').select('business_id,profit_target,target_mode,historical_summary,updated_at'),
       admin.from('business_sales').select('business_id,updated_at,deleted_at'),
       admin.from('business_expenses').select('business_id,updated_at,deleted_at'),
       admin.from('business_daily_snapshots').select('business_id,updated_at,deleted_at'),
@@ -159,7 +159,8 @@ export async function GET(request: NextRequest) {
       const hasInitialSummary = (Number.isFinite(historicalSales) && historicalSales > 0)
         || (Number.isFinite(historicalExpenses) && historicalExpenses > 0);
       const hasProgress = activeSales.length > 0 || activeExpenses.length > 0 || hasInitialSummary;
-      const activated = target > 0 && hasProgress;
+      const hasGoal = businessSettings?.target_mode === 'break_even' || target > 0;
+      const activated = hasGoal && hasProgress;
       const owner = businessMembers.find((row) => row.role === 'owner');
 
       return {
@@ -170,7 +171,7 @@ export async function GET(request: NextRequest) {
         memberCount: businessMembers.length,
         salesCount: activeSales.length,
         expenseCount: activeExpenses.length,
-        hasGoal: target > 0,
+        hasGoal,
         hasInitialSummary,
         hasProgress,
         activated,
