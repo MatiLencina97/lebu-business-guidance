@@ -154,14 +154,17 @@ export async function GET(request: Request) {
       // 1.21.4: antes de decidir o enviar un aviso refrescamos desde la fuente canónica.
       // No intentamos despertar la PWA: el cron lee directamente ventas/gastos ya sincronizados
       // en Supabase. Si Cloud no puede refrescarse, preferimos omitir el aviso a mandar un número viejo.
-      const businessId = snapshot.source === 'cloud-canonical-v1' && typeof snapshot.businessId === 'string' && snapshot.businessId
+      const snapshotBusinessId = snapshot.source === 'cloud-canonical-v1' && typeof snapshot.businessId === 'string' && snapshot.businessId
         ? snapshot.businessId
         : null;
+      const subscriptionBusinessId = typeof subscription.business_id === 'string' && subscription.business_id
+        ? subscription.business_id
+        : null;
+      const businessId = snapshotBusinessId || subscriptionBusinessId;
 
-      // 1.22.2: una suscripción vieja puede conservar un snapshot local sin businessId.
-      // Nunca usamos ese estado para avisos programados: es preferible omitir el push a
-      // comparar contra una meta vieja de otro dispositivo/configuración. Al abrir una
-      // versión actual de Lebu, /api/push/snapshot vuelve a sembrar el estado canónico.
+      // Las instalaciones antiguas pueden conservar un notification_state previo a Cloud v2.
+      // La suscripción ya quedó vinculada al comercio al activar preferencias/notificaciones,
+      // así que usamos ese vínculo para reconstruir un snapshot canónico en el servidor.
       if (!businessId) continue;
 
       try {
