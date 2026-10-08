@@ -4781,7 +4781,7 @@ export default function Home() {
 
             <div className="mt-4 rounded-2xl border border-[var(--line)] bg-[var(--brand-soft)]/55 p-4">
               <div className="text-xs font-extrabold text-[var(--brand)]">¿POR QUÉ PRORRATEAMOS?</div>
-              <p className="mt-1 text-xs leading-5 text-[var(--ink-soft)]">Porque el alquiler, los sueldos y otros compromisos existen aunque todavía no haya llegado el día del pago. Así una semana "tranquila" no te hace creer que venís mejor de lo que realmente venís.</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--ink-soft)]">Porque el alquiler, los sueldos y otros compromisos existen aunque todavía no haya llegado el día del pago. Así una semana &quot;tranquila&quot; no te hace creer que venís mejor de lo que realmente venís.</p>
             </div>
           </div>
 
