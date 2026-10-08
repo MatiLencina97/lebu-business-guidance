@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
+const inputStyle = {display:"block",width:"100%",padding:12,marginTop:6,border:"1px solid #9ca3af",borderRadius:10,background:"#ffffff",color:"#111827",boxShadow:"0 1px 2px rgba(0,0,0,.06)"};
 
 export default function CalculadoraVentasPage() {
   const [gastos, setGastos] = useState(2500000);
@@ -22,10 +23,10 @@ export default function CalculadoraVentasPage() {
       <h1>¿Cuánto tenés que vender por día?</h1>
       <p>Calculá en menos de un minuto cuánto necesita facturar tu negocio para cubrir gastos y alcanzar tu objetivo de ganancia.</p>
       <section style={{display:"grid",gap:16,marginTop:32}}>
-        <label>Gastos mensuales ($)<input aria-label="Gastos mensuales" type="number" min="0" value={gastos} onChange={e=>setGastos(Number(e.target.value))} style={{display:"block",width:"100%",padding:12,marginTop:6}} /></label>
-        <label>Ganancia mensual que querés ($)<input aria-label="Ganancia objetivo" type="number" min="0" value={ganancia} onChange={e=>setGanancia(Number(e.target.value))} style={{display:"block",width:"100%",padding:12,marginTop:6}} /></label>
-        <label>Margen bruto estimado (%)<input aria-label="Margen bruto" type="number" min="1" max="100" value={margen} onChange={e=>setMargen(Number(e.target.value))} style={{display:"block",width:"100%",padding:12,marginTop:6}} /></label>
-        <label>Días abiertos por mes<input aria-label="Días abiertos" type="number" min="1" max="31" value={dias} onChange={e=>setDias(Number(e.target.value))} style={{display:"block",width:"100%",padding:12,marginTop:6}} /></label>
+        <label>Gastos mensuales ($)<input aria-label="Gastos mensuales" type="number" min="0" value={gastos} onChange={e=>setGastos(Number(e.target.value))} style={inputStyle} /></label>
+        <label>Ganancia mensual que querés ($)<input aria-label="Ganancia objetivo" type="number" min="0" value={ganancia} onChange={e=>setGanancia(Number(e.target.value))} style={inputStyle} /></label>
+        <label>Margen bruto estimado (%)<input aria-label="Margen bruto" type="number" min="1" max="100" value={margen} onChange={e=>setMargen(Number(e.target.value))} style={inputStyle} /></label>
+        <label>Días abiertos por mes<input aria-label="Días abiertos" type="number" min="1" max="31" value={dias} onChange={e=>setDias(Number(e.target.value))} style={inputStyle} /></label>
       </section>
       <section style={{marginTop:32,padding:24,border:"1px solid currentColor",borderRadius:16}}>
         <p>Objetivo de facturación mensual</p><h2>{money.format(r.mensual)}</h2>
