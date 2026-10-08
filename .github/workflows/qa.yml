@@ -15,7 +15,7 @@ jobs:
           node-version: 22
       - run: npm install
       - name: Audit production dependencies
-        run: npm audit --omit=dev || true
+        run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npm run qa
       - run: npm run build
