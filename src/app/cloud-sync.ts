@@ -91,6 +91,7 @@ const META_KEY = 'lebu-cloud-sync-meta-v2';
 const LEGACY_META_KEY = 'lebu-cloud-sync-meta-v1';
 const CLIENT_KEY = 'lebu-cloud-client-id-v1';
 const BUSINESS_CACHE_PREFIX = 'lebu-business-memberships-v1:';
+const LOCAL_STATE_OWNER_KEY = 'lebu-local-state-owner-user-v1';
 
 function readBusinessCache(userId: string): CloudBusinessOption[] {
   try {
@@ -102,6 +103,14 @@ function readBusinessCache(userId: string): CloudBusinessOption[] {
 
 function writeBusinessCache(userId: string, list: CloudBusinessOption[]) {
   try { localStorage.setItem(`${BUSINESS_CACHE_PREFIX}${userId}`, JSON.stringify(list)); } catch { /* IndexedDB/state sigue disponible. */ }
+}
+
+function readLocalStateOwnerUserId() {
+  try { return localStorage.getItem(LOCAL_STATE_OWNER_KEY); } catch { return null; }
+}
+
+function writeLocalStateOwnerUserId(userId: string) {
+  try { localStorage.setItem(LOCAL_STATE_OWNER_KEY, userId); } catch { /* La protección Cloud sigue funcionando por metadata cuando localStorage está disponible. */ }
 }
 
 function getClientId() {
@@ -498,7 +507,10 @@ export function useLebuCloudSync({
           || Object.values(remote.tombstones).some((items) => Array.isArray(items) && items.length > 0);
         // Un dispositivo sin metadata sólo puede sembrar Cloud cuando el negocio está realmente vacío.
         // Si Cloud ya tiene datos/historial, remoto gana. Esto evita resucitar copias locales viejas.
+        const localStateOwnerUserId = readLocalStateOwnerUserId();
+        const localStateBelongsToCurrentUser = !localStateOwnerUserId || localStateOwnerUserId === currentUser.id;
         const canSeedCloud = currentMembership?.role === 'owner'
+          && localStateBelongsToCurrentUser
           && hasMeaningfulData(localAtStart)
           && !remoteHasHistory;
         const merged = canSeedCloud
@@ -636,6 +648,9 @@ export function useLebuCloudSync({
       await new Promise((resolve) => setTimeout(resolve, 0));
       await synchronizeRef.current?.();
     }
+    // El estado local queda asociado a la cuenta que terminó de reconciliarlo.
+    // Si otra cuenta entra después en este navegador, nunca puede sembrar esos datos en un comercio vacío.
+    writeLocalStateOwnerUserId(currentUser.id);
   }, [applyRemoteState, fetchBusinesses]);
 
   useEffect(() => {
@@ -838,6 +853,8 @@ export function useLebuCloudSync({
   }
 
   async function signOut() {
+    const currentUserId = userRef.current?.id;
+    if (currentUserId) writeLocalStateOwnerUserId(currentUserId);
     await supabase.auth.signOut();
     clearMeta();
     setBusinessId(null);
