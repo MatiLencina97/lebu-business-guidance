@@ -1438,6 +1438,10 @@ export default function Home() {
     setPushStatus(getPushSupportStatus());
   }, [hydrated]);
 
+  const pushCloudUser = cloud.user;
+  const pushCloudBusinessId = cloud.businessId;
+  const syncCloudNow = cloud.syncNow;
+
   useEffect(() => {
     if (!hydrated || pushStatus !== 'enabled' || !isOnline) return;
     let cancelled = false;
@@ -1462,7 +1466,7 @@ export default function Home() {
   );
   const settingsRecurringTotal = useMemo(
     () => settingsDraft.recurringCosts.reduce((sum, item) => sum + prorateRecurringCost(item, settingsPeriod.start, settingsPeriod.end, settingsDraft.periodType, settingsPeriod.start, settingsPeriod.end), 0),
-    [settingsDraft.recurringCosts, settingsPeriod],
+    [settingsDraft.recurringCosts, settingsDraft.periodType, settingsPeriod],
   );
 
   const analysisSales = useMemo(() => {
@@ -1675,7 +1679,7 @@ export default function Home() {
       projectedGap,
       salesByDate,
     };
-  }, [profitTarget, targetMode, historicalSummary, recurringCosts, sales, expenses, salesChannelFees, period, openWeekdays, dayExceptions, smartDistributionEnabled, smartModel]);
+  }, [profitTarget, targetMode, historicalSummary, recurringCosts, sales, expenses, salesChannelFees, period, periodType, openWeekdays, dayExceptions, smartDistributionEnabled, smartModel]);
 
   const recurringPaymentProgressById = useMemo(() => {
     const reconciliation = reconcileRecurringExpenses(expenses, recurringCosts);
@@ -1841,7 +1845,7 @@ export default function Home() {
       verdictBody,
       verdictTone,
     };
-  }, [simulatorDraft, period.start, period.end, result.recurringTotal, result.variableSpent, result.soldSoFar, result.contributionMargin, result.observedDailySales, result.variableRate, result.completedOpenDays, result.dailyNeeded, result.additionalSalesNeeded, result.remainingOpenDays, analysisSales, dayExceptions, smartDistributionEnabled]);
+  }, [simulatorDraft, period.start, period.end, periodType, result.recurringTotal, result.variableSpent, result.soldSoFar, result.contributionMargin, result.observedDailySales, result.variableRate, result.completedOpenDays, result.dailyNeeded, result.additionalSalesNeeded, result.remainingOpenDays, analysisSales, dayExceptions, smartDistributionEnabled]);
 
   const dailyReferenceModel = useMemo(() => {
     const today = todayISO();
@@ -2075,11 +2079,11 @@ export default function Home() {
         // 1.21.4: si hay Cloud, ningún snapshot que pueda derivar en una notificación sale
         // antes de una reconciliación. Si el sync trae cambios remotos, esperamos el próximo
         // render para no enviar números construidos con la copia anterior del dispositivo.
-        if (cloud.user) {
-          if (!cloud.businessId) return;
+        if (pushCloudUser) {
+          if (!pushCloudBusinessId) return;
           let currentRenderIsFresh = false;
           for (let attempt = 0; attempt < 3 && !cancelled; attempt += 1) {
-            currentRenderIsFresh = await cloud.syncNow();
+            currentRenderIsFresh = await syncCloudNow();
             if (currentRenderIsFresh) break;
             await new Promise((resolve) => window.setTimeout(resolve, 250));
           }
@@ -2089,7 +2093,7 @@ export default function Home() {
         if (smartEvent) pendingSmartEventRef.current = null;
         const ok = await sendPushSnapshot({
           schemaVersion: 5,
-          businessId: cloud.businessId || undefined,
+          businessId: pushCloudBusinessId || undefined,
           generatedAt: new Date().toISOString(),
           hasTarget: result.hasTarget,
           targetMode: result.targetMode,
@@ -2118,7 +2122,7 @@ export default function Home() {
       })();
     }, 700);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [hydrated, pushStatus, isOnline, cloud.user?.id, cloud.businessId, result.hasTarget, result.targetMode, result.goalReached, result.additionalSalesNeeded, result.dailyNeeded, result.remainingOpenDays, result.currentProfit, result.soldSoFar, result.variableSpent, result.totalExpenses, result.target, period.start, period.end, periodType, openWeekdays, dayExceptions, result.salesByDate, result.observedDailySales, result.projectedProfit, result.smartActive, result.smartTargetsByDate, smartModel.weightByWeekday, undoMovement]);
+  }, [hydrated, pushStatus, isOnline, pushCloudUser, pushCloudBusinessId, syncCloudNow, result.hasTarget, result.targetMode, result.goalReached, result.additionalSalesNeeded, result.dailyNeeded, result.remainingOpenDays, result.currentProfit, result.soldSoFar, result.variableSpent, result.totalExpenses, result.target, period.start, period.end, periodType, openWeekdays, dayExceptions, result.salesByDate, result.observedDailySales, result.projectedProfit, result.smartActive, result.smartTargetsByDate, smartModel.weightByWeekday, undoMovement]);
 
   async function activateNotifications() {
     setPushBusy(true);
@@ -2142,19 +2146,19 @@ export default function Home() {
     setNotificationPromptOpen(false);
   }
 
-  function maybeSuggestNotifications() {
+  const maybeSuggestNotifications = useCallback(() => {
     // En 1.17 priorizamos que el usuario vea valor y guarde su negocio antes de sumar otro pedido.
     if (!cloud.user) return;
     if (pushStatus === 'default' && typeof window !== 'undefined' && localStorage.getItem(NOTIFICATION_PROMPT_KEY) !== '1') {
       setNotificationPromptOpen(true);
     }
-  }
+  }, [cloud.user, pushStatus]);
 
   useEffect(() => {
     if (!cloud.user || !result.hasTarget || pushStatus !== 'default') return;
     const timer = window.setTimeout(() => maybeSuggestNotifications(), 1400);
     return () => window.clearTimeout(timer);
-  }, [cloud.user?.id, result.hasTarget, pushStatus]);
+  }, [cloud.user, result.hasTarget, pushStatus, maybeSuggestNotifications]);
 
   async function testNotification() {
     setPushBusy(true);
