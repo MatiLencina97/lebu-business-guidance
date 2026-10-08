@@ -12,6 +12,7 @@ export type ImportMapping = {
   date: number;
   time: number;
   amount: number;
+  channel: number;
   category: number;
   note: number;
   reference: number;
@@ -44,6 +45,7 @@ export type PreparedImportRow = {
   category: string;
   note: string;
   reference: string;
+  channel?: string;
   occurredAt?: string;
   matchedExistingId?: number;
   reconciliationExplicit?: boolean;
@@ -107,10 +109,11 @@ export function detectKnownImportPreset(sheets: ParsedImportSheet[]): KnownImpor
   if (date < 0 || amount < 0) return null;
 
   const note = exactHeaderIndex(headers, ['Medio de Pago']);
+  const channel = exactHeaderIndex(headers, ['Origen', 'Canal', 'Canal de venta', 'Tipo de Venta']);
   const reference = exactHeaderIndex(headers, ['Id. Origen', 'ID Origen']);
   const comment = exactHeaderIndex(headers, ['Comentario']);
   const time = exactHeaderIndex(headers, ['Hora', 'Creación', 'Creacion', 'Cerrada']);
-  const currentMapping: ImportMapping = { date, time, amount, category: -1, note, reference };
+  const currentMapping: ImportMapping = { date, time, amount, channel, category: -1, note, reference };
 
   const identityCandidates: Array<[string, string[]]> = [
     ['created', ['Creación', 'Creacion']],
@@ -152,7 +155,7 @@ export function detectKnownImportPreset(sheets: ParsedImportSheet[]): KnownImpor
   };
 }
 
-const headerKeywords = ['fecha', 'date', 'dia', 'importe', 'monto', 'total', 'amount', 'valor', 'venta', 'ingreso', 'gasto', 'egreso', 'categoria', 'category', 'descripcion', 'detalle', 'concepto', 'referencia', 'transaction', 'transaccion', 'comprobante', 'ticket'];
+const headerKeywords = ['fecha', 'date', 'dia', 'importe', 'monto', 'total', 'amount', 'valor', 'venta', 'ingreso', 'gasto', 'egreso', 'canal', 'origen', 'marketplace', 'categoria', 'category', 'descripcion', 'detalle', 'concepto', 'referencia', 'transaction', 'transaccion', 'comprobante', 'ticket'];
 
 export function detectHeaderRow(rows: ImportCell[][]) {
   const limit = Math.min(rows.length, 10);
@@ -205,6 +208,7 @@ export function autoMapHeaders(headers: string[]): ImportMapping {
     date: bestColumn(headers, ['fecha', 'date', 'dia', 'created at', 'created', 'timestamp']),
     time: bestColumn(headers, ['hora', 'time', 'horario', 'creacion', 'creación', 'cerrada', 'created at', 'timestamp']),
     amount: bestColumn(headers, ['importe', 'monto', 'amount', 'total', 'valor', 'neto', 'bruto', 'venta', 'ingreso', 'gasto', 'egreso']),
+    channel: bestColumn(headers, ['canal', 'canal de venta', 'origen', 'origin', 'marketplace', 'delivery', 'plataforma', 'tipo de venta']),
     category: bestColumn(headers, ['categoria', 'category', 'rubro', 'tipo', 'grupo']),
     note: bestColumn(headers, ['descripcion', 'detalle', 'concepto', 'nota', 'note', 'observacion', 'comentario']),
     reference: bestColumn(headers, ['referencia', 'reference', 'ref', 'transaction id', 'transaccion', 'comprobante', 'ticket', 'numero', 'nro', 'id']),
@@ -436,6 +440,7 @@ export function prepareImportRows({
       const amount = kind === 'expense' && Number.isFinite(rawAmount) ? Math.abs(rawAmount) : rawAmount;
       const categoryValue = mapping.category >= 0 ? cellText(row[mapping.category]) : '';
       const category = kind === 'expense' ? (categoryValue || fallbackCategory || 'Otros') : '';
+      const channel = kind === 'sale' && mapping.channel >= 0 ? cellText(row[mapping.channel]) : '';
       const note = mapping.note >= 0 ? cellText(row[mapping.note]) : '';
       const reference = mapping.reference >= 0 ? cellText(row[mapping.reference]) : '';
 
@@ -488,6 +493,7 @@ export function prepareImportRows({
         category,
         note,
         reference,
+        channel: channel || undefined,
         occurredAt: occurredAt || undefined,
         matchedExistingId,
         duplicate,

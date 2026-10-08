@@ -59,6 +59,7 @@ type SettingsRow = {
   historical_summary?: Record<string, unknown> | null;
   open_weekdays: number[];
   categories: string[];
+  sales_channel_fees?: unknown;
   sounds_enabled: boolean;
   smart_distribution_enabled: boolean;
   available_cash?: number | string | null;
@@ -234,6 +235,7 @@ async function fetchRemoteDataset(businessId: string): Promise<RemoteDataset> {
       historicalSummary: settings?.historical_summary && typeof settings.historical_summary === 'object' ? settings.historical_summary : null,
       openWeekdays: Array.isArray(settings?.open_weekdays) ? settings!.open_weekdays.map(Number) : [0, 1, 2, 3, 4, 5, 6],
       categories: Array.isArray(settings?.categories) ? settings!.categories.map(String) : [],
+      salesChannelFees: Array.isArray(settings?.sales_channel_fees) ? settings!.sales_channel_fees : [],
       soundsEnabled: settings?.sounds_enabled ?? true,
       smartDistributionEnabled: settings?.smart_distribution_enabled ?? true,
       availableCash: settings?.available_cash == null ? '' : numberText(settings.available_cash),
@@ -245,6 +247,7 @@ async function fetchRemoteDataset(businessId: string): Promise<RemoteDataset> {
         cashEffectAt: row.cash_effect_at || undefined,
         source: row.source || 'manual', externalId: row.external_id || undefined, sourceUpdatedAt: row.source_updated_at || undefined,
         sourceMetadata: row.source_metadata && typeof row.source_metadata === 'object' ? row.source_metadata : undefined,
+        channel: typeof row.source_metadata?.channel === 'string' ? row.source_metadata.channel : undefined,
         paymentBreakdown: Array.isArray(row.payment_breakdown) ? row.payment_breakdown : undefined,
         occurredAt: typeof row.source_metadata?.occurredAt === 'string' ? row.source_metadata.occurredAt : undefined,
         ticketId: row.source === 'fudo' && row.external_id ? String(row.external_id) : undefined,
@@ -330,6 +333,7 @@ async function pushLocalChanges({
       historical_summary: state.historicalSummary,
       open_weekdays: state.openWeekdays,
       categories: Array.isArray(local.categories) ? local.categories.map(String) : [],
+      sales_channel_fees: Array.isArray(state.salesChannelFees) ? state.salesChannelFees : [],
       sounds_enabled: state.soundsEnabled,
       smart_distribution_enabled: state.smartDistributionEnabled,
       available_cash: Number(String(state.availableCash || '').replace(/[^0-9.-]/g, '')) || 0,
@@ -341,8 +345,8 @@ async function pushLocalChanges({
 
   const salesDelta = buildKeyedDelta(base.sales, local.sales, saleKey);
   operations.push(upsertRows('business_sales', [
-    ...salesDelta.upserts.map((item) => ({ ...common, ...movementAudit(item), id: Number(item.id), sale_date: item.date, amount: Number(String(item.amount).replace(/[^0-9.-]/g, '')) || 0, cash_effect_amount: item.cashEffectAmount == null ? null : Number(String(item.cashEffectAmount).replace(/[^0-9.-]/g, '')) || 0, cash_effect_at: item.cashEffectAt || null, source: item.source || 'manual', external_id: item.externalId || null, source_updated_at: item.sourceUpdatedAt || null, source_metadata: (item.sourceMetadata || item.occurredAt || item.items) ? { ...(item.sourceMetadata || {}), ...(item.occurredAt ? { occurredAt: item.occurredAt } : {}), ...(Array.isArray(item.items) ? { items: item.items } : {}) } : null, payment_breakdown: item.paymentBreakdown || null, deleted_at: null })),
-    ...salesDelta.deleted.map((item) => ({ ...common, ...movementAudit(item), id: Number(item.id), sale_date: item.date, amount: Number(String(item.amount).replace(/[^0-9.-]/g, '')) || 0, cash_effect_amount: item.cashEffectAmount == null ? null : Number(String(item.cashEffectAmount).replace(/[^0-9.-]/g, '')) || 0, cash_effect_at: item.cashEffectAt || null, source: item.source || 'manual', external_id: item.externalId || null, source_updated_at: item.sourceUpdatedAt || null, source_metadata: (item.sourceMetadata || item.occurredAt || item.items) ? { ...(item.sourceMetadata || {}), ...(item.occurredAt ? { occurredAt: item.occurredAt } : {}), ...(Array.isArray(item.items) ? { items: item.items } : {}) } : null, payment_breakdown: item.paymentBreakdown || null, deleted_at: now })),
+    ...salesDelta.upserts.map((item) => ({ ...common, ...movementAudit(item), id: Number(item.id), sale_date: item.date, amount: Number(String(item.amount).replace(/[^0-9.-]/g, '')) || 0, cash_effect_amount: item.cashEffectAmount == null ? null : Number(String(item.cashEffectAmount).replace(/[^0-9.-]/g, '')) || 0, cash_effect_at: item.cashEffectAt || null, source: item.source || 'manual', external_id: item.externalId || null, source_updated_at: item.sourceUpdatedAt || null, source_metadata: (item.sourceMetadata || item.occurredAt || item.items || item.channel) ? { ...(item.sourceMetadata || {}), ...(item.channel ? { channel: item.channel } : {}), ...(item.occurredAt ? { occurredAt: item.occurredAt } : {}), ...(Array.isArray(item.items) ? { items: item.items } : {}) } : null, payment_breakdown: item.paymentBreakdown || null, deleted_at: null })),
+    ...salesDelta.deleted.map((item) => ({ ...common, ...movementAudit(item), id: Number(item.id), sale_date: item.date, amount: Number(String(item.amount).replace(/[^0-9.-]/g, '')) || 0, cash_effect_amount: item.cashEffectAmount == null ? null : Number(String(item.cashEffectAmount).replace(/[^0-9.-]/g, '')) || 0, cash_effect_at: item.cashEffectAt || null, source: item.source || 'manual', external_id: item.externalId || null, source_updated_at: item.sourceUpdatedAt || null, source_metadata: (item.sourceMetadata || item.occurredAt || item.items || item.channel) ? { ...(item.sourceMetadata || {}), ...(item.channel ? { channel: item.channel } : {}), ...(item.occurredAt ? { occurredAt: item.occurredAt } : {}), ...(Array.isArray(item.items) ? { items: item.items } : {}) } : null, payment_breakdown: item.paymentBreakdown || null, deleted_at: now })),
   ], 'business_id,id'));
 
   const expensesDelta = buildKeyedDelta(base.expenses, local.expenses, expenseKey);
