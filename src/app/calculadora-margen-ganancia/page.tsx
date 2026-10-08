@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
+const inputStyle = {display:"block",width:"100%",padding:12,marginTop:6,border:"1px solid #9ca3af",borderRadius:10,background:"#ffffff",color:"#111827",boxShadow:"0 1px 2px rgba(0,0,0,.06)"};
 
 export default function MargenGananciaPage() {
   const [costo, setCosto] = useState(2000);
@@ -26,10 +27,10 @@ export default function MargenGananciaPage() {
     <h1>Calculadora de margen de ganancia</h1>
     <p>Calculá cuánto te deja realmente un producto y qué porcentaje de tus ventas queda como ganancia.</p>
     <section style={{display:"grid",gap:16,marginTop:32}}>
-      <label>Costo por unidad ($)<input aria-label="Costo por unidad" type="number" min="0" value={costo} onChange={e=>setCosto(Number(e.target.value))} style={{display:"block",width:"100%",padding:12,marginTop:6}} /></label>
-      <label>Precio de venta ($)<input aria-label="Precio de venta" type="number" min="0" value={precio} onChange={e=>setPrecio(Number(e.target.value))} style={{display:"block",width:"100%",padding:12,marginTop:6}} /></label>
-      <label>Unidades vendidas<input aria-label="Unidades" type="number" min="1" value={unidades} onChange={e=>setUnidades(Number(e.target.value))} style={{display:"block",width:"100%",padding:12,marginTop:6}} /></label>
-      <label>Otros costos del período ($)<input aria-label="Otros costos" type="number" min="0" value={fijos} onChange={e=>setFijos(Number(e.target.value))} style={{display:"block",width:"100%",padding:12,marginTop:6}} /></label>
+      <label>Costo por unidad ($)<input aria-label="Costo por unidad" type="number" min="0" value={costo} onChange={e=>setCosto(Number(e.target.value))} style={inputStyle} /></label>
+      <label>Precio de venta ($)<input aria-label="Precio de venta" type="number" min="0" value={precio} onChange={e=>setPrecio(Number(e.target.value))} style={inputStyle} /></label>
+      <label>Unidades vendidas<input aria-label="Unidades" type="number" min="1" value={unidades} onChange={e=>setUnidades(Number(e.target.value))} style={inputStyle} /></label>
+      <label>Otros costos del período ($)<input aria-label="Otros costos" type="number" min="0" value={fijos} onChange={e=>setFijos(Number(e.target.value))} style={inputStyle} /></label>
     </section>
     <section style={{marginTop:32,padding:24,border:"1px solid currentColor",borderRadius:16}}>
       <p>Facturación: <strong>{money.format(r.ventaTotal)}</strong></p>
