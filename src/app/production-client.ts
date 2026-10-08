@@ -174,17 +174,6 @@ export function useProductionData(businessId: string | null, enabled = true) {
     return rows.map((row) => row.id);
   }, [businessId, refresh]);
 
-  const ensureDay = useCallback(async (date: string) => {
-    if (!businessId) throw new Error('Necesitás un negocio sincronizado para usar Producción.');
-    const now = new Date().toISOString();
-    const { error: writeError } = await supabase.from('business_production_days').upsert({
-      business_id: businessId,
-      production_date: date,
-      updated_at: now,
-    }, { onConflict: 'business_id,production_date' });
-    if (writeError) throw writeError;
-  }, [businessId]);
-
   const startDay = useCallback(async (date: string, opening: Array<{ productId: number; quantity: number }>) => {
     if (!businessId) throw new Error('Necesitás un negocio sincronizado para usar Producción.');
     const openingRows = opening
