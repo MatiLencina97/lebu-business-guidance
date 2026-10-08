@@ -21,7 +21,7 @@ import { recurringOccurrenceCandidates, recurringOccurrenceDateForExpense, sugge
 
 const money = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
 
-type ExistingMovement = { id: number; occurredAt?: string; recurringCostId?: number; recurringOccurrenceDate?: string };
+type ExistingMovement = { id: number; occurredAt?: string; channel?: string; recurringCostId?: number; recurringOccurrenceDate?: string };
 
 type Props = {
   categories: string[];
@@ -34,7 +34,7 @@ type Props = {
   sessionMode?: boolean;
 };
 
-const emptyMapping: ImportMapping = { date: -1, time: -1, amount: -1, category: -1, note: -1, reference: -1 };
+const emptyMapping: ImportMapping = { date: -1, time: -1, amount: -1, channel: -1, category: -1, note: -1, reference: -1 };
 const IMPORT_PROFILES_KEY = 'lebu-import-profiles-v1';
 const IMPORT_HISTORY_KEY = 'lebu-import-history-v1';
 
@@ -46,6 +46,7 @@ type ImportProfile = {
   dateHeader: string;
   timeHeader: string;
   amountHeader: string;
+  channelHeader?: string;
   categoryHeader: string;
   noteHeader: string;
   referenceHeader: string;
@@ -107,6 +108,7 @@ function mappingFromProfile(profile: ImportProfile, headers: string[]): ImportMa
     date: find(profile.dateHeader),
     time: find(profile.timeHeader || '') >= 0 ? find(profile.timeHeader || '') : headers.findIndex((header) => /(^|\s)(hora|time|horario|creaci[oó]n|cerrada|timestamp)(\s|$)/i.test(header)),
     amount: find(profile.amountHeader),
+    channel: find(profile.channelHeader || ''),
     category: find(profile.categoryHeader),
     note: find(profile.noteHeader),
     reference: find(profile.referenceHeader),
@@ -227,9 +229,11 @@ export default function MovementImportModal({ categories, existingSales, existin
 
   const validRows = useMemo(() => prepared.filter((row) => !row.error && !row.duplicate), [prepared]);
   const saleEnrichmentRows = useMemo(() => prepared.filter((row) => {
-    if (kind !== 'sale' || row.error || !row.duplicate || !row.occurredAt || row.matchedExistingId == null) return false;
+    if (kind !== 'sale' || row.error || !row.duplicate || row.matchedExistingId == null) return false;
     const current = existingById.get(row.matchedExistingId);
-    return !current?.occurredAt || current.occurredAt !== row.occurredAt;
+    const timeChanged = Boolean(row.occurredAt && (!current?.occurredAt || current.occurredAt !== row.occurredAt));
+    const channelChanged = Boolean(row.channel && String(current?.channel || '').trim() !== String(row.channel).trim());
+    return timeChanged || channelChanged;
   }), [prepared, kind, existingById]);
   const expenseEnrichmentRows = useMemo(() => prepared.filter((row) => {
     if (kind !== 'expense' || row.error || !row.duplicate || !row.reconciliationExplicit || row.matchedExistingId == null) return false;
@@ -243,7 +247,7 @@ export default function MovementImportModal({ categories, existingSales, existin
   const filteredPreviewRows = useMemo(() => {
     const query = previewQuery.trim().toLowerCase();
     if (!query) return prepared;
-    return prepared.filter((row) => [row.rowNumber, row.date, row.amount, row.category, row.note, row.reference, row.occurredAt].some((value) => String(value ?? '').toLowerCase().includes(query)));
+    return prepared.filter((row) => [row.rowNumber, row.date, row.amount, row.channel, row.category, row.note, row.reference, row.occurredAt].some((value) => String(value ?? '').toLowerCase().includes(query)));
   }, [prepared, previewQuery]);
   const previewPageCount = Math.max(1, Math.ceil(filteredPreviewRows.length / PREVIEW_PAGE_SIZE));
   const previewRows = filteredPreviewRows.slice(previewPage * PREVIEW_PAGE_SIZE, (previewPage + 1) * PREVIEW_PAGE_SIZE);
@@ -301,6 +305,7 @@ export default function MovementImportModal({ categories, existingSales, existin
       dateHeader: headers[mapping.date] || '',
       timeHeader: mapping.time >= 0 ? headers[mapping.time] || '' : '',
       amountHeader: headers[mapping.amount] || '',
+      channelHeader: mapping.channel >= 0 ? headers[mapping.channel] || '' : '',
       categoryHeader: mapping.category >= 0 ? headers[mapping.category] || '' : '',
       noteHeader: mapping.note >= 0 ? headers[mapping.note] || '' : '',
       referenceHeader: mapping.reference >= 0 ? headers[mapping.reference] || '' : '',
@@ -401,7 +406,7 @@ export default function MovementImportModal({ categories, existingSales, existin
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex gap-3">
                     <span className="mt-0.5 text-[var(--brand)]"><Sparkles size={18} /></span>
-                    <div><strong className="block text-sm text-[var(--ink)]">Detectamos un reporte de Fudo</strong><p className="mt-1 text-xs leading-5 text-[var(--muted)]">Elegimos <strong>Ventas</strong>, <strong>Fecha → Fecha</strong>, <strong>Importe → Total</strong> y, cuando existe, también <strong>Hora</strong>. Podés reimportar ventas ya cargadas para enriquecerlas con horario sin duplicarlas.</p></div>
+                    <div><strong className="block text-sm text-[var(--ink)]">Detectamos un reporte de Fudo</strong><p className="mt-1 text-xs leading-5 text-[var(--muted)]">Elegimos <strong>Ventas</strong>, <strong>Fecha → Fecha</strong>, <strong>Importe → Total</strong>, <strong>Canal → Origen</strong> y, cuando existe, también <strong>Hora</strong>. Podés reimportar ventas ya cargadas para enriquecerlas con canal u horario sin duplicarlas.</p></div>
                   </div>
                   <button type="button" onClick={() => setConfigExpanded((value) => !value)} className="small-button shrink-0">{configExpanded ? 'Ocultar' : 'Revisar'} <ChevronDown size={14} className={configExpanded ? 'rotate-180' : ''} /></button>
                 </div>
@@ -450,6 +455,7 @@ export default function MovementImportModal({ categories, existingSales, existin
                 <ColumnSelect label="Fecha" required value={mapping.date} headers={headers} onChange={(value) => updateMapping('date', value)} />
                 {kind === 'sale' && <ColumnSelect label="Hora" value={mapping.time} headers={headers} onChange={(value) => updateMapping('time', value)} hint="Opcional. También se detecta si la fecha ya trae hora. Sirve para analizar franjas horarias sin crear ventas nuevas." />}
                 <ColumnSelect label="Importe" required value={mapping.amount} headers={headers} onChange={(value) => updateMapping('amount', value)} />
+                {kind === 'sale' && <ColumnSelect label="Canal / origen" value={mapping.channel} headers={headers} onChange={(value) => updateMapping('channel', value)} hint="Ej. PedidosYa, mostrador, Rappi o venta directa. Si el archivo es de Fudo, Lebu usa la columna Origen." />}
                 {kind === 'expense' && <ColumnSelect label="Categoría del archivo" value={mapping.category} headers={headers} onChange={(value) => updateMapping('category', value)} />}
                 {kind === 'expense' && mapping.category < 0 && (
                   <label>
@@ -471,7 +477,7 @@ export default function MovementImportModal({ categories, existingSales, existin
               <>
                 <div className="import-summary mt-7">
                   <div><strong>{validRows.length}</strong><span>listas para importar</span></div>
-                  {kind === 'sale' && <div><strong>{saleEnrichmentRows.length}</strong><span>actualizan hora</span></div>}
+                  {kind === 'sale' && <div><strong>{saleEnrichmentRows.length}</strong><span>actualizan canal/hora</span></div>}
                   {kind === 'expense' && <div><strong>{expenseEnrichmentRows.length}</strong><span>actualizan vínculo</span></div>}
                   <div><strong>{Math.max(duplicateRows.length - saleEnrichmentRows.length - expenseEnrichmentRows.length, 0)}</strong><span>ya cargadas</span></div>
                   <div><strong>{invalidRows.length}</strong><span>con error</span></div>
@@ -502,7 +508,7 @@ export default function MovementImportModal({ categories, existingSales, existin
 
                 <div className="import-preview mt-3">
                   <table>
-                    <thead><tr><th>Fila</th><th>Fecha</th>{kind === 'sale' && <th>Hora</th>}<th>{kind === 'sale' ? 'Venta' : 'Gasto'}</th>{kind === 'expense' && <th>Categoría</th>}{kind === 'expense' && recurringCosts.length > 0 && <th>Recurrente</th>}<th>Estado</th></tr></thead>
+                    <thead><tr><th>Fila</th><th>Fecha</th>{kind === 'sale' && <th>Hora</th>}<th>{kind === 'sale' ? 'Venta' : 'Gasto'}</th>{kind === 'sale' && <th>Canal</th>}{kind === 'expense' && <th>Categoría</th>}{kind === 'expense' && recurringCosts.length > 0 && <th>Recurrente</th>}<th>Estado</th></tr></thead>
                     <tbody>
                       {previewRows.map((row) => (
                         <tr key={`${row.rowNumber}-${row.id}`}>
@@ -510,6 +516,7 @@ export default function MovementImportModal({ categories, existingSales, existin
                           <td>{row.date || '—'}</td>
                           {kind === 'sale' && <td>{row.occurredAt ? row.occurredAt.slice(11, 16) : '—'}</td>}
                           <td>{row.amount > 0 ? money.format(row.amount) : '—'}</td>
+                          {kind === 'sale' && <td>{row.channel || 'Directo'}</td>}
                           {kind === 'expense' && <td>{row.category || '—'}</td>}
                           {kind === 'expense' && recurringCosts.length > 0 && (
                             <td>
