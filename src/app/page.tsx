@@ -56,6 +56,7 @@ import { cancelTeamInvitation, fetchTeamOverview, inviteTeamMember, removeTeamMe
 import { enablePushNotifications, getPushPreferences, getPushSupportStatus, savePushPreferences, sendPushSnapshot, sendTestPush, type PushPreferences, type PushSupportStatus, type SmartSyncEvent } from './push-client';
 import MiradaView from './MiradaView';
 import ProductionView from './ProductionView';
+import EventsView from './EventsView';
 import { buildMiradaAnalysis, type MiradaAnalysisWindowKind } from './mirada';
 import { applyThemePreference, readThemePreference, resolveTheme, saveThemePreference, type ThemePreference } from './theme';
 import { buildCashGuidance, normalizeCashPaymentSchedule, type CashPaymentSchedule } from './cashflow';
@@ -64,6 +65,7 @@ import { expectedRecurringAmount, reconcileRecurringExpenses, recurringOccurrenc
 import { connectFudo, disconnectFudo, getFudoStatus, syncFudo, type FudoConnectionStatus, type FudoSyncResult } from './fudo-client';
 import { buildProductionAnalysis, buildProductionDayStatus, buildProductionHomeAlert } from './production';
 import { useProductionData } from './production-client';
+import { useEventsData } from './events-client';
 
 const money = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -166,7 +168,7 @@ function formatPeriodRange(start: string, end: string) {
 type PeriodType = 'weekly' | 'biweekly' | 'monthly';
 type TargetMode = 'profit' | 'break_even';
 type SettingsSection = 'plan' | 'preferences' | 'account';
-type MainView = 'home' | 'movements' | 'production' | 'insights' | 'simulator';
+type MainView = 'home' | 'movements' | 'production' | 'events' | 'insights' | 'simulator';
 
 type RecurringFrequency = 'weekly' | 'biweekly' | 'monthly';
 
@@ -689,7 +691,7 @@ const initialRecurringCosts: RecurringCost[] = [];
 const initialSales: Sale[] = [];
 const initialExpenses: Expense[] = [];
 
-const APP_VERSION = '1.22.8';
+const APP_VERSION = '1.23.0';
 const STORAGE_KEY = 'lebu-v1-data';
 const LEGACY_STORAGE_KEYS = ['lebu-v011-demo', 'lebu-v010-demo', 'tarasca-v09-demo', 'tarasca-v08-demo', 'tarasca-v07-demo'];
 
@@ -1078,6 +1080,14 @@ export default function Home() {
   });
 
   const production = useProductionData(cloud.activeBusiness?.businessId || null, hydrated && Boolean(cloud.user));
+  const businessEvents = useEventsData(cloud.activeBusiness?.businessId || null, hydrated && Boolean(cloud.user));
+  const eventSuggestedAverageTicket = useMemo(() => {
+    const cutoff = toLocalISO(addDays(new Date(), -30));
+    const recent = sales
+      .filter((sale) => sale.date >= cutoff && parseMoney(sale.amount) > 0)
+      .map((sale) => parseMoney(sale.amount));
+    return recent.length ? recent.reduce((sum, amount) => sum + amount, 0) / recent.length : 0;
+  }, [sales]);
   const productionTodayStatuses = useMemo(() => buildProductionDayStatus({
     date: todayISO(),
     products: production.products,
@@ -2954,6 +2964,7 @@ export default function Home() {
           <button type="button" onClick={() => { setQuickActionOpen(false); setSettingsOpen(false); setActiveView('home'); }} className={activeView === 'home' && !(settingsOpen && settingsSection === 'plan') ? 'primary-nav-item primary-nav-item-active' : 'primary-nav-item'}><House size={16} /> Inicio</button>
           <button type="button" onClick={() => { setQuickActionOpen(false); setSettingsOpen(false); setActiveView('movements'); }} className={activeView === 'movements' && !(settingsOpen && settingsSection === 'plan') ? 'primary-nav-item primary-nav-item-active' : 'primary-nav-item'}><ListChecks size={16} /> Movimientos</button>
           <button type="button" onClick={() => { setQuickActionOpen(false); setSettingsOpen(false); setActiveView('production'); }} className={activeView === 'production' && !(settingsOpen && settingsSection === 'plan') ? 'primary-nav-item primary-nav-item-active' : 'primary-nav-item'}><PackageOpen size={16} /> Producción</button>
+          <button type="button" onClick={() => { setQuickActionOpen(false); setSettingsOpen(false); setActiveView('events'); }} className={activeView === 'events' && !(settingsOpen && settingsSection === 'plan') ? 'primary-nav-item primary-nav-item-active' : 'primary-nav-item'}><CalendarClock size={16} /> Eventos</button>
           <button type="button" onClick={() => { setQuickActionOpen(false); setSettingsOpen(false); setActiveView('insights'); }} className={(activeView === 'insights' || activeView === 'simulator') && !(settingsOpen && settingsSection === 'plan') ? 'primary-nav-item primary-nav-item-active' : 'primary-nav-item'}><Eye size={16} /> Mirada</button>
           <button type="button" onClick={() => openSettingsSection('plan')} className={settingsOpen && settingsSection === 'plan' ? 'primary-nav-item primary-nav-item-active' : 'primary-nav-item'}><Target size={16} /> Estrategia</button>
         </nav>
@@ -3446,6 +3457,20 @@ export default function Home() {
             </div>
           </section>
 
+          <section className={`events-view-shell min-w-0 lg:col-span-2 ${activeView === 'events' ? 'block' : 'hidden'}`}>
+            <EventsView
+              businessId={cloud.activeBusiness?.businessId || null}
+              canOperate={canOperateMovements}
+              events={businessEvents.events}
+              loading={businessEvents.loading}
+              error={businessEvents.error}
+              suggestedAverageTicket={eventSuggestedAverageTicket}
+              onRefresh={businessEvents.refresh}
+              onSave={businessEvents.saveEvent}
+              onDelete={businessEvents.deleteEvent}
+            />
+          </section>
+
           <section className={`production-view-shell min-w-0 lg:col-span-2 ${activeView === 'production' ? 'block' : 'hidden'}`}>
             <ProductionView
               businessId={cloud.activeBusiness?.businessId || null}
@@ -3701,6 +3726,7 @@ export default function Home() {
         <button type="button" onClick={() => { setQuickActionOpen(false); setSettingsOpen(false); setActiveView('home'); }} className={activeView === 'home' && !(settingsOpen && settingsSection === 'plan') ? 'mobile-nav-item mobile-nav-item-active' : 'mobile-nav-item'}><House size={19} /><span>Inicio</span></button>
         <button type="button" onClick={() => { setQuickActionOpen(false); setSettingsOpen(false); setActiveView('movements'); }} className={activeView === 'movements' && !(settingsOpen && settingsSection === 'plan') ? 'mobile-nav-item mobile-nav-item-active' : 'mobile-nav-item'}><ListChecks size={19} /><span>Movimientos</span></button>
         <button type="button" onClick={() => { setQuickActionOpen(false); setSettingsOpen(false); setActiveView('production'); }} className={activeView === 'production' && !(settingsOpen && settingsSection === 'plan') ? 'mobile-nav-item mobile-nav-item-active' : 'mobile-nav-item'}><PackageOpen size={19} /><span>Producción</span></button>
+        <button type="button" onClick={() => { setQuickActionOpen(false); setSettingsOpen(false); setActiveView('events'); }} className={activeView === 'events' && !(settingsOpen && settingsSection === 'plan') ? 'mobile-nav-item mobile-nav-item-active' : 'mobile-nav-item'}><CalendarClock size={19} /><span>Eventos</span></button>
         <button type="button" onClick={() => { setQuickActionOpen(false); setSettingsOpen(false); setActiveView('insights'); }} className={(activeView === 'insights' || activeView === 'simulator') && !(settingsOpen && settingsSection === 'plan') ? 'mobile-nav-item mobile-nav-item-active' : 'mobile-nav-item'}><Eye size={19} /><span>Mirada</span></button>
         <button type="button" onClick={() => { setQuickActionOpen(false); openSettingsSection('plan'); }} className={settingsOpen && settingsSection === 'plan' ? 'mobile-nav-item mobile-nav-item-active' : 'mobile-nav-item'}><Target size={19} /><span>Estrategia</span></button>
       </nav>
