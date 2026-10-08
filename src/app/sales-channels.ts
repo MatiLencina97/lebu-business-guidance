@@ -30,21 +30,22 @@ export function normalizeSalesChannel(value: unknown) {
 export function normalizeSalesChannelFeeRules(value: unknown): SalesChannelFeeRule[] {
   if (!Array.isArray(value)) return [];
   const used = new Set<number>();
-  return value
-    .map((item: any, index) => {
-      const name = String(item?.name || '').trim();
-      const feePct = Math.min(Math.max(finite(item?.feePct), 0), 100);
-      const rawId = Number(item?.id);
-      const id = Number.isFinite(rawId) && rawId > 0 && !used.has(rawId)
-        ? rawId
-        : Date.now() * 1000 + index + 1;
-      used.add(id);
-      const aliases = Array.isArray(item?.aliases)
-        ? [...new Set(item.aliases.map((alias: unknown) => String(alias || '').trim()).filter(Boolean))]
-        : [];
-      return name ? { id, name, feePct, aliases } : null;
-    })
-    .filter((item): item is SalesChannelFeeRule => Boolean(item));
+  const rules: SalesChannelFeeRule[] = [];
+  value.forEach((item: any, index) => {
+    const name = String(item?.name || '').trim();
+    if (!name) return;
+    const feePct = Math.min(Math.max(finite(item?.feePct), 0), 100);
+    const rawId = Number(item?.id);
+    const id = Number.isFinite(rawId) && rawId > 0 && !used.has(rawId)
+      ? rawId
+      : Date.now() * 1000 + index + 1;
+    used.add(id);
+    const aliases: string[] = Array.isArray(item?.aliases)
+      ? Array.from(new Set<string>(item.aliases.map((alias: unknown) => String(alias || '').trim()).filter((alias: string) => Boolean(alias))))
+      : [];
+    rules.push({ id, name, feePct, aliases });
+  });
+  return rules;
 }
 
 function metadataCandidates(metadata: Record<string, unknown> | undefined) {
