@@ -608,7 +608,7 @@ export function useLebuCloudSync({
         window.setTimeout(() => void synchronizeRef.current?.(), 100);
       }
     }
-  }, [applyRemoteState, markSynced]);
+  }, [applyRemoteState, applyState, markSynced]);
 
   synchronizeRef.current = synchronize;
 
@@ -886,6 +886,7 @@ export function useLebuCloudSync({
   }
 
   const activeBusiness = businesses.find((item) => item.businessId === businessId) || null;
+  const syncNow = useCallback(async () => Boolean(await synchronizeRef.current?.()), []);
 
   return {
     user,
@@ -901,6 +902,6 @@ export function useLebuCloudSync({
     signOut,
     switchBusiness,
     refreshBusinesses,
-    syncNow: async () => Boolean(await synchronizeRef.current?.()),
+    syncNow,
   };
 }
