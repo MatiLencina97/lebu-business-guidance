@@ -66,6 +66,7 @@ import { connectFudo, disconnectFudo, getFudoStatus, syncFudo, type FudoConnecti
 import { buildProductionAnalysis, buildProductionDayStatus, buildProductionHomeAlert } from './production';
 import { useProductionData } from './production-client';
 import { useEventsData } from './events-client';
+import { netSaleContribution, normalizeSalesChannelFeeRules, saleChannelFee, type SalesChannelFeeRule } from './sales-channels';
 
 const money = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -272,6 +273,7 @@ type SettingsDraft = {
   dayExceptions: DayException[];
   recurringCosts: RecurringCost[];
   categories: string[];
+  salesChannelFees: SalesChannelFeeRule[];
   smartDistributionEnabled: boolean;
   availableCash: string;
 };
@@ -290,6 +292,7 @@ type Sale = {
   externalId?: string;
   sourceUpdatedAt?: string;
   sourceMetadata?: Record<string, unknown>;
+  channel?: string;
   paymentBreakdown?: Array<{ id?: string; amount?: number; methodName?: string; isCash?: boolean }>;
   // FUDO conserva el timestamp real cuando la API lo entrega. Mirada 1.21.10 lo usa
   // para habilitar análisis horario sin convertir a Lebu en un POS.
@@ -361,6 +364,7 @@ type MovementEditDraft = {
   date: string;
   category: string;
   note: string;
+  channel: string;
   cashPaid: boolean;
   recurringCostId: number | null;
   recurringOccurrenceDate: string | null;
@@ -691,7 +695,7 @@ const initialRecurringCosts: RecurringCost[] = [];
 const initialSales: Sale[] = [];
 const initialExpenses: Expense[] = [];
 
-const APP_VERSION = '1.23.0';
+const APP_VERSION = '1.23.1';
 const STORAGE_KEY = 'lebu-v1-data';
 const LEGACY_STORAGE_KEYS = ['lebu-v011-demo', 'lebu-v010-demo', 'tarasca-v09-demo', 'tarasca-v08-demo', 'tarasca-v07-demo'];
 
@@ -708,6 +712,7 @@ export default function Home() {
   const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
   const [dailySnapshots, setDailySnapshots] = useState<DailySnapshot[]>([]);
   const [categories, setCategories] = useState<string[]>(initialCategories);
+  const [salesChannelFees, setSalesChannelFees] = useState<SalesChannelFeeRule[]>([]);
   const [soundsEnabled, setSoundsEnabled] = useState(true);
   const [themePreference, setThemePreference] = useState<ThemePreference>('system');
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light');
@@ -738,6 +743,7 @@ export default function Home() {
     dayExceptions: [],
     recurringCosts: [],
     categories: [...initialCategories],
+    salesChannelFees: [],
     smartDistributionEnabled: true,
     availableCash: '',
   });
@@ -794,7 +800,7 @@ export default function Home() {
   const milestoneStateRef = useRef<{ key: string; breakEven: boolean; goalReached: boolean; dailyReached: boolean } | null>(null);
   const suppressMilestoneSoundRef = useRef(false);
 
-  const [saleDraft, setSaleDraft] = useState({ amount: '', date: todayISO() });
+  const [saleDraft, setSaleDraft] = useState({ amount: '', date: todayISO(), channel: '' });
   const [expenseDraft, setExpenseDraft] = useState({ amount: '', date: todayISO(), category: 'Café', note: '', cashPaid: true });
   const [customCategory, setCustomCategory] = useState('');
   const [showCustomCategory, setShowCustomCategory] = useState(false);
@@ -954,6 +960,7 @@ export default function Home() {
           if (Array.isArray(parsed.expenses)) setExpenses(parsed.expenses as Expense[]);
           if (Array.isArray(parsed.dailySnapshots)) setDailySnapshots((parsed.dailySnapshots as DailySnapshot[]).filter((item) => typeof item?.date === 'string' && typeof item?.periodStart === 'string' && typeof item?.periodEnd === 'string'));
           if (Array.isArray(parsed.categories)) setCategories(parsed.categories as string[]);
+          if (Array.isArray(parsed.salesChannelFees)) setSalesChannelFees(normalizeSalesChannelFeeRules(parsed.salesChannelFees));
           if (typeof parsed.soundsEnabled === 'boolean') setSoundsEnabled(parsed.soundsEnabled);
           if (typeof parsed.smartDistributionEnabled === 'boolean') setSmartDistributionEnabled(parsed.smartDistributionEnabled);
           if (typeof parsed.availableCash === 'string' || typeof parsed.availableCash === 'number') setAvailableCash(String(parsed.availableCash));
@@ -982,6 +989,7 @@ export default function Home() {
       dayExceptions: dayExceptions.map((item) => ({ ...item })),
       recurringCosts: recurringCosts.map((item) => ({ ...item, configHistory: normalizeRecurringHistory(item.configHistory) })),
       categories: [...categories],
+      salesChannelFees: salesChannelFees.map((item) => ({ ...item, aliases: [...(item.aliases || [])] })),
       smartDistributionEnabled,
       availableCash,
     });
@@ -994,7 +1002,7 @@ export default function Home() {
     setSettingsCoveredRecurringIds(coverageActive ? coveredRecurringIdsForSummary(historicalSummary, recurringCosts) : []);
     setNewRecurring({ name: '', amount: '', frequency: 'monthly', paymentSchedule: null, amountApproximate: false, includedInHistoricalSummary: coverageActive });
     setExceptionDate(todayISO() < currentPeriod.start ? currentPeriod.start : todayISO() > currentPeriod.end ? currentPeriod.end : todayISO());
-  }, [settingsOpen, profitTarget, targetMode, periodType, periodStartDay, openWeekdays, dayExceptions, recurringCosts, categories, smartDistributionEnabled, historicalSummary, availableCash]);
+  }, [settingsOpen, profitTarget, targetMode, periodType, periodStartDay, openWeekdays, dayExceptions, recurringCosts, categories, salesChannelFees, smartDistributionEnabled, historicalSummary, availableCash]);
 
   useEffect(() => {
     return () => {
@@ -1004,7 +1012,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state = { schemaVersion: 16, profitTarget, targetMode, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments };
+    const state = { schemaVersion: 16, profitTarget, targetMode, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, salesChannelFees, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments };
 
     // IndexedDB es la persistencia principal. Mantenemos un espejo pequeño en localStorage
     // como red de seguridad para navegadores que bloqueen IndexedDB.
@@ -1014,7 +1022,7 @@ export default function Home() {
     } catch {
       // Si el navegador rechaza localStorage, IndexedDB sigue siendo suficiente.
     }
-  }, [hydrated, profitTarget, targetMode, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments]);
+  }, [hydrated, profitTarget, targetMode, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, salesChannelFees, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments]);
 
   useEffect(() => {
     const sync = () => setIsOnline(navigator.onLine);
@@ -1041,12 +1049,13 @@ export default function Home() {
     expenses,
     dailySnapshots,
     categories,
+    salesChannelFees,
     soundsEnabled,
     smartDistributionEnabled,
     availableCash,
     cashUpdatedAt,
     cashAdjustments,
-  }), [profitTarget, targetMode, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments]);
+  }), [profitTarget, targetMode, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, salesChannelFees, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments]);
 
   const applyCloudBusinessState = useCallback((parsed: CloudState) => {
     if (typeof parsed.profitTarget === 'string') setProfitTarget(parsed.profitTarget);
@@ -1062,6 +1071,8 @@ export default function Home() {
     if (Array.isArray(parsed.expenses)) setExpenses(parsed.expenses as Expense[]);
     if (Array.isArray(parsed.dailySnapshots)) setDailySnapshots((parsed.dailySnapshots as DailySnapshot[]).filter((item) => typeof item?.date === 'string'));
     if (Array.isArray(parsed.categories) && parsed.categories.length) setCategories(parsed.categories as string[]);
+    if (Array.isArray(parsed.salesChannelFees)) setSalesChannelFees(normalizeSalesChannelFeeRules(parsed.salesChannelFees));
+    else setSalesChannelFees([]);
     if (typeof parsed.soundsEnabled === 'boolean') setSoundsEnabled(parsed.soundsEnabled);
     if (typeof parsed.smartDistributionEnabled === 'boolean') setSmartDistributionEnabled(parsed.smartDistributionEnabled);
     if (typeof parsed.availableCash === 'string' || typeof parsed.availableCash === 'number') setAvailableCash(String(parsed.availableCash));
@@ -1487,7 +1498,13 @@ export default function Home() {
     const periodExpenses = expenses.filter((expense) => isWithinPeriod(expense.date, period.start, period.end) && !dateCoveredBySummary(expense.date, 'expense'));
     const historicalSales = summaryCoversSales && historicalSummary ? parseMoney(historicalSummary.salesTotal) : 0;
     const historicalExpenses = summaryCoversExpenses && historicalSummary ? parseMoney(historicalSummary.expensesTotal) : 0;
-    const soldSoFar = historicalSales + periodSales.reduce((sum, sale) => sum + parseMoney(sale.amount), 0);
+    const detailedSalesGross = periodSales.reduce((sum, sale) => sum + parseMoney(sale.amount), 0);
+    const soldSoFar = historicalSales + detailedSalesGross;
+    const channelFees = periodSales.reduce((sum, sale) => sum + saleChannelFee(sale, salesChannelFees).fee, 0);
+    const channelFeesByDate = periodSales.reduce<Record<string, number>>((acc, sale) => {
+      acc[sale.date] = (acc[sale.date] || 0) + saleChannelFee(sale, salesChannelFees).fee;
+      return acc;
+    }, {});
     const coveredRecurringIds = new Set(
       summaryCoversExpenses && historicalSummary?.expensesIncludeRecurring
         ? coveredRecurringIdsForSummary(historicalSummary, recurringCosts)
@@ -1517,24 +1534,18 @@ export default function Home() {
     // Mantenemos el acumulado como un bloque no clasificado para que agregar detalle recurrente
     // tampoco altere la tasa observada ni, por arrastre, el objetivo diario.
     const variableSpent = historicalExpenses + detailedExpensesTotal + recurringActualAdjustment;
-    const totalExpenses = recurringTotal + variableSpent;
+    const totalExpensesBeforeChannelFees = recurringTotal + variableSpent;
+    const totalExpenses = totalExpensesBeforeChannelFees + channelFees;
     const currentProfit = soldSoFar - totalExpenses;
     const missingProfit = Math.max(target - currentProfit, 0);
     const goalReached = hasTarget && currentProfit >= target;
     const surplusProfit = Math.max(currentProfit - target, 0);
 
-    // Un acumulado histórico puede mezclar alquiler, sueldos, compras y otros conceptos.
-    // No lo usamos para inferir una tasa variable: sería asumir que todos esos gastos crecen
-    // con las ventas. La tasa se aprende solamente de movimientos detallados posteriores al
-    // acumulado; mientras no haya muestra suficiente, Lebu trata lo ya gastado como costo
-    // comprometido y no inventa costos futuros.
-    // 1.21.8: un gasto detallado NO implica que sea variable. Un Excel/FUDO puede traer
-    // sueldos, alquiler, servicios, compras puntuales y otros costos que no crecen con cada venta.
-    // Hasta que exista una clasificación explícita de costos variables, Lebu no infiere una tasa
-    // multiplicando todos los gastos observados contra las ventas: hacerlo puede inflar brutalmente
-    // el objetivo diario (por ejemplo, interpretar 6M de gastos del mes como 90% de cada venta futura).
-    const variableRate = 0;
-    const contributionMargin = 1;
+    // Los gastos comunes no se extrapolan como porcentaje de venta. Las comisiones por canal,
+    // en cambio, sí son un costo variable explícito: usamos el mix observado de ventas detalladas
+    // para estimar qué parte de cada peso bruto futuro quedará realmente en el negocio.
+    const variableRate = detailedSalesGross > 0 ? Math.min(Math.max(channelFees / detailedSalesGross, 0), 0.95) : 0;
+    const contributionMargin = Math.max(1 - variableRate, 0.05);
     const additionalSalesNeeded = missingProfit / contributionMargin;
     const todayValue = todayISO();
     const remainingOpenDates = listOpenDates(period.start, period.end, openWeekdays, dayExceptions).filter((date) => date >= todayValue);
@@ -1547,10 +1558,8 @@ export default function Home() {
     // visible el avance, incluso mientras todavía estamos cubriendo gastos.
     // Cuando la tasa variable queda limitada (máximo 90%), cualquier gasto ya realizado que
     // quede por encima de esa tasa sigue siendo un costo comprometido y no desaparece del camino.
-    const variableCostExcess = Math.max(variableSpent - (soldSoFar * variableRate), 0);
-    const committedCosts = recurringTotal + variableCostExcess;
     const salesNeededForGoal = hasTarget
-      ? (committedCosts + target) / contributionMargin
+      ? soldSoFar + additionalSalesNeeded
       : 0;
     const goalPathProgress = salesNeededForGoal > 0
       ? Math.min(Math.max((soldSoFar / salesNeededForGoal) * 100, 0), 100)
@@ -1559,7 +1568,9 @@ export default function Home() {
     // Hito de "gastos cubiertos" con exactamente el mismo modelo de costos usado por el
     // objetivo. Por eso siempre queda antes que la ganancia objetivo y no se mueve al vender más
     // salvo que cambie el patrón real de gastos.
-    const breakEvenSalesTarget = committedCosts / contributionMargin;
+    const breakEvenSalesTarget = currentProfit >= 0
+      ? Math.max(soldSoFar - (currentProfit / contributionMargin), 0)
+      : soldSoFar + (Math.abs(currentProfit) / contributionMargin);
     const breakEvenProgress = salesNeededForGoal > 0
       ? Math.min(Math.max((breakEvenSalesTarget / salesNeededForGoal) * 100, 0), 100)
       : 0;
@@ -1602,7 +1613,7 @@ export default function Home() {
     const futureOpenDays = tomorrowISO <= period.end ? countOpenDays(period.start, period.end, openWeekdays, tomorrowISO, dayExceptions) : 0;
     const projectedFutureSales = observedDailySales * futureOpenDays;
     const projectedTotalSales = soldSoFar + projectedFutureSales;
-    const projectedVariableSpent = variableSpent + projectedFutureSales * variableRate;
+    const projectedVariableSpent = variableSpent + channelFees + projectedFutureSales * variableRate;
     const projectedProfit = projectedTotalSales - recurringTotal - projectedVariableSpent;
     const projectionAvailable = completedOpenDays > 0 && hasTarget;
     const projectedGap = projectionAvailable ? target - projectedProfit : 0;
@@ -1627,6 +1638,9 @@ export default function Home() {
       recurringActualAdjustment,
       recurringReconciliationGroups: recurringReconciliation.groups,
       variableSpent,
+      channelFees,
+      channelFeesByDate,
+      totalExpensesBeforeChannelFees,
       totalExpenses,
       currentProfit,
       missingProfit,
@@ -1661,7 +1675,7 @@ export default function Home() {
       projectedGap,
       salesByDate,
     };
-  }, [profitTarget, targetMode, historicalSummary, recurringCosts, sales, expenses, period, openWeekdays, dayExceptions, smartDistributionEnabled, smartModel]);
+  }, [profitTarget, targetMode, historicalSummary, recurringCosts, sales, expenses, salesChannelFees, period, openWeekdays, dayExceptions, smartDistributionEnabled, smartModel]);
 
   const recurringPaymentProgressById = useMemo(() => {
     const reconciliation = reconcileRecurringExpenses(expenses, recurringCosts);
@@ -1845,15 +1859,21 @@ export default function Home() {
     // Reconstruimos la referencia con el negocio sin las ventas de hoy, pero con el plan y
     // los costos que conocemos ahora. Esto la vuelve estable frente a ventas y reclasificaciones,
     // pero permite que un costo realmente nuevo o un cambio real de estrategia la actualice.
+    const todayChannelFees = Number(result.channelFeesByDate[today] || 0);
     const soldBeforeToday = Math.max(result.soldSoFar - todaySales, 0);
-    const profitBeforeToday = soldBeforeToday - result.totalExpenses;
+    const channelFeesBeforeToday = Math.max(result.channelFees - todayChannelFees, 0);
+    const profitBeforeToday = soldBeforeToday - (result.totalExpensesBeforeChannelFees + channelFeesBeforeToday);
     const missingProfitBeforeToday = Math.max(result.target - profitBeforeToday, 0);
 
-    // Igual que en el cálculo principal, un acumulado mixto no sirve para deducir una tasa
-    // variable. Para la vara de hoy usamos solo movimientos detallados previos a hoy.
-    // La referencia de hoy usa la misma regla conservadora: no inventar costos variables futuros
-    // a partir de gastos históricos sin clasificación explícita.
-    const contributionMarginBeforeToday = 1;
+    // La referencia conserva la misma lógica económica: solo proyecta costos variables que
+    // fueron configurados explícitamente como comisión por canal.
+    const detailedSalesBeforeToday = analysisSales
+      .filter((sale) => sale.date >= period.start && sale.date < today)
+      .reduce((sum, sale) => sum + parseMoney(sale.amount), 0);
+    const rateBeforeToday = detailedSalesBeforeToday > 0
+      ? Math.min(Math.max(channelFeesBeforeToday / detailedSalesBeforeToday, 0), 0.95)
+      : result.variableRate;
+    const contributionMarginBeforeToday = Math.max(1 - rateBeforeToday, 0.05);
     const additionalSalesNeededBeforeToday = missingProfitBeforeToday / contributionMarginBeforeToday;
     const smartActiveBeforeToday = smartDistributionEnabled && dailyReferenceModel.ready;
     const reconstructedTargets = weightedTargets(
@@ -1880,7 +1900,7 @@ export default function Home() {
     const nextOpenTarget = nextOpenDate ? Number(futureTargets[nextOpenDate] || 0) : 0;
 
     return { todaySales, referenceTarget, reached, delta, nextOpenDate, nextOpenTarget };
-  }, [result.salesByDate, result.soldSoFar, result.totalExpenses, result.target, result.hasTarget, result.todayIsOpen, result.dailyNeeded, result.remainingOpenDates, result.additionalSalesNeeded, result.smartActive, dailySnapshots, period.start, period.end, analysisExpenses, smartDistributionEnabled, dailyReferenceModel, smartModel]);
+  }, [result.salesByDate, result.soldSoFar, result.channelFees, result.channelFeesByDate, result.totalExpensesBeforeChannelFees, result.target, result.hasTarget, result.todayIsOpen, result.dailyNeeded, result.remainingOpenDates, result.additionalSalesNeeded, result.smartActive, result.variableRate, dailySnapshots, period.start, period.end, analysisSales, smartDistributionEnabled, dailyReferenceModel, smartModel]);
 
   // Desde 1.5 Lebu guarda una foto del último estado de cada día. No intenta inventar
   // objetivos históricos previos: empieza a construir una serie real desde esta versión.
@@ -2259,7 +2279,7 @@ export default function Home() {
   function openRegister(kind: 'sale' | 'expense') {
     if (!canOperateMovements) return;
     setRegisterKind(kind);
-    setSaleDraft({ amount: '', date: todayISO() });
+    setSaleDraft({ amount: '', date: todayISO(), channel: '' });
     setExpenseDraft((current) => ({ ...current, amount: '', note: '', date: todayISO(), cashPaid: true }));
     setShowAllExpenseCategories(false);
     setShowCustomCategory(false);
@@ -2272,7 +2292,8 @@ export default function Home() {
     if (!amount || !saleDraft.date) return;
     const movementId = createEntityId();
     pendingSmartEventRef.current = { id: String(movementId), kind: 'sale_added', amount, occurredAt: new Date().toISOString() };
-    const item: Sale = { id: movementId, amount: String(amount), date: saleDraft.date, ...movementAuditForCurrentUser() };
+    const item: Sale = { id: movementId, amount: String(amount), date: saleDraft.date, channel: saleDraft.channel || undefined, ...movementAuditForCurrentUser() };
+    const netContribution = netSaleContribution(item, salesChannelFees);
 
     // Si una venta manual de hoy cruza un hito, reproducimos la firma dentro del click.
     // Esto es mucho más fiable en Safari/iOS que esperar a un effect asíncrono.
@@ -2285,11 +2306,11 @@ export default function Home() {
     const crossesBreakEven = isTodaySale
       && result.hasTarget
       && result.currentProfit < 0
-      && result.currentProfit + amount >= 0;
+      && result.currentProfit + netContribution >= 0;
     const crossesPeriodGoal = isTodaySale
       && result.hasTarget
       && !result.goalReached
-      && result.currentProfit + amount >= result.target;
+      && result.currentProfit + netContribution >= result.target;
     if (crossesDailyGoal || crossesBreakEven || crossesPeriodGoal) {
       playLebuSound();
       suppressMilestoneSoundRef.current = true;
@@ -2336,7 +2357,7 @@ export default function Home() {
       const summaryCoversCurrentSales = historicalSummaryIsActiveForPeriod(historicalSummary, period)
         && historicalSummaryCoversSales(historicalSummary);
       let addedTodaySales = 0;
-      let addedPeriodSales = 0;
+      let addedPeriodContribution = 0;
 
       for (const row of rows) {
         const matchedId = row.matchedExistingId ?? row.id;
@@ -2349,21 +2370,23 @@ export default function Home() {
           && row.date >= historicalSummary.startDate
           && row.date <= historicalSummary.endDate,
         );
-        if (!coveredBySummary && isWithinPeriod(row.date, period.start, period.end)) addedPeriodSales += amount;
+        if (!coveredBySummary && isWithinPeriod(row.date, period.start, period.end)) {
+          addedPeriodContribution += netSaleContribution({ amount, channel: row.channel }, salesChannelFees);
+        }
         if (!coveredBySummary && row.date === today) addedTodaySales += amount;
       }
 
-      if (!startingDataImportPending && (addedTodaySales > 0 || addedPeriodSales > 0)) {
+      if (!startingDataImportPending && (addedTodaySales > 0 || addedPeriodContribution > 0)) {
         const crossesDailyGoal = result.todayIsOpen
           && dailyGoal.referenceTarget > 0
           && dailyGoal.todaySales < dailyGoal.referenceTarget
           && dailyGoal.todaySales + addedTodaySales >= dailyGoal.referenceTarget;
         const crossesBreakEven = result.hasTarget
           && result.currentProfit < 0
-          && result.currentProfit + addedPeriodSales >= 0;
+          && result.currentProfit + addedPeriodContribution >= 0;
         const crossesPeriodGoal = result.hasTarget
           && !result.goalReached
-          && result.currentProfit + addedPeriodSales >= result.target;
+          && result.currentProfit + addedPeriodContribution >= result.target;
 
         // Una tanda puede cruzar varios hitos a la vez: el búho suena una sola vez.
         if (crossesDailyGoal || crossesBreakEven || crossesPeriodGoal) {
@@ -2383,14 +2406,20 @@ export default function Home() {
           const matchedId = row.matchedExistingId ?? row.id;
           const current = byId.get(matchedId);
           if (current) {
-            // Reimportar el mismo ticket con una columna de hora enriquece el dato existente;
-            // nunca vuelve a sumar la venta.
-            if (row.occurredAt && current.occurredAt !== row.occurredAt) {
+            // Reimportar el mismo ticket puede enriquecer hora y canal sin volver a sumar la venta.
+            const timeChanged = Boolean(row.occurredAt && current.occurredAt !== row.occurredAt);
+            const channelChanged = Boolean(row.channel && String(current.channel || '') !== String(row.channel));
+            if (timeChanged || channelChanged) {
               byId.set(matchedId, {
                 ...current,
-                occurredAt: row.occurredAt,
-                sourceMetadata: { ...(current.sourceMetadata || {}), occurredAt: row.occurredAt },
-                ...movementAuditForCurrentUser(),
+                occurredAt: row.occurredAt || current.occurredAt,
+                channel: row.channel || current.channel,
+                sourceMetadata: {
+                  ...(current.sourceMetadata || {}),
+                  ...(row.occurredAt ? { occurredAt: row.occurredAt } : {}),
+                  ...(row.channel ? { channel: row.channel } : {}),
+                },
+                ...movementUpdateAuditForCurrentUser(),
               });
               changed = true;
             }
@@ -2402,7 +2431,11 @@ export default function Home() {
             amount: String(Math.round(row.amount)),
             source: 'manual',
             occurredAt: row.occurredAt || undefined,
-            sourceMetadata: row.occurredAt ? { occurredAt: row.occurredAt } : undefined,
+            channel: row.channel || undefined,
+            sourceMetadata: (row.occurredAt || row.channel) ? {
+              ...(row.occurredAt ? { occurredAt: row.occurredAt } : {}),
+              ...(row.channel ? { channel: row.channel } : {}),
+            } : undefined,
             ...movementAuditForCurrentUser(),
           });
           changed = true;
@@ -2476,12 +2509,12 @@ export default function Home() {
     if (movement.kind === 'sale') {
       const item = sales.find((sale) => sale.id === movement.id);
       if (!item) return;
-      setEditingMovement({ kind: 'sale', id: item.id, amount: item.amount, date: item.date, category: '', note: '', cashPaid: false, recurringCostId: null, recurringOccurrenceDate: null });
+      setEditingMovement({ kind: 'sale', id: item.id, amount: item.amount, date: item.date, category: '', note: '', channel: item.channel || '', cashPaid: false, recurringCostId: null, recurringOccurrenceDate: null });
       return;
     }
     const item = expenses.find((expense) => expense.id === movement.id);
     if (!item) return;
-    setEditingMovement({ kind: 'expense', id: item.id, amount: item.amount, date: item.date, category: item.category, note: item.note, cashPaid: Boolean(item.cashEffectAmount && item.cashEffectAt), recurringCostId: item.recurringCostId ?? null, recurringOccurrenceDate: item.recurringOccurrenceDate ?? null });
+    setEditingMovement({ kind: 'expense', id: item.id, amount: item.amount, date: item.date, category: item.category, note: item.note, channel: '', cashPaid: Boolean(item.cashEffectAmount && item.cashEffectAt), recurringCostId: item.recurringCostId ?? null, recurringOccurrenceDate: item.recurringOccurrenceDate ?? null });
   }
 
   function saveMovementEdit() {
@@ -2493,7 +2526,7 @@ export default function Home() {
     if (!amount || !editingMovement.date) return;
     pendingSmartEventRef.current = { id: `edit-${editingMovement.id}-${Date.now()}`, kind: 'movement_edited', amount, category: editingMovement.kind === 'expense' ? editingMovement.category : undefined, occurredAt: new Date().toISOString() };
     if (editingMovement.kind === 'sale') {
-      setSales((list) => list.map((item) => item.id === editingMovement.id ? { ...item, amount: String(amount), date: editingMovement.date, ...movementUpdateAuditForCurrentUser() } : item));
+      setSales((list) => list.map((item) => item.id === editingMovement.id ? { ...item, amount: String(amount), date: editingMovement.date, channel: editingMovement.channel || undefined, sourceMetadata: { ...(item.sourceMetadata || {}), ...(editingMovement.channel ? { channel: editingMovement.channel } : {}) }, ...movementUpdateAuditForCurrentUser() } : item));
     } else {
       if (!editingMovement.category.trim()) return;
       const category = editingMovement.category.trim();
@@ -2811,6 +2844,15 @@ export default function Home() {
     ).values());
     if (!normalizedCategories.some((item) => item.toLocaleLowerCase('es-AR') === 'otros')) normalizedCategories.push('Otros');
     setCategories(normalizedCategories);
+    const normalizedSalesChannelFees = normalizeSalesChannelFeeRules(settingsDraft.salesChannelFees)
+      .map((rule) => ({
+        ...rule,
+        name: rule.name.trim(),
+        feePct: Math.min(Math.max(Number(rule.feePct) || 0, 0), 100),
+        aliases: [...new Set([rule.name, ...(rule.aliases || [])].map((value) => String(value || '').trim()).filter(Boolean))],
+      }))
+      .filter((rule) => rule.name && rule.feePct > 0);
+    setSalesChannelFees(normalizedSalesChannelFees);
     setExpenseDraft((current) => normalizedCategories.some((item) => item === current.category)
       ? current
       : { ...current, category: normalizedCategories[0] || 'Otros' });
@@ -2834,6 +2876,7 @@ export default function Home() {
     const economicPlanChanged = targetMode !== settingsDraft.targetMode
       || target !== parseMoney(profitTarget)
       || calendarChanged
+      || JSON.stringify(normalizeSalesChannelFeeRules(salesChannelFees)) !== JSON.stringify(normalizedSalesChannelFees)
       || Math.round(currentAdditionalRecurring) !== Math.round(nextAdditionalRecurring);
     if (economicPlanChanged) {
       setDailySnapshots((list) => list.map((item) => item.date === todayISO() ? { ...item, referenceDailyTarget: undefined } : item));
@@ -2852,7 +2895,7 @@ export default function Home() {
   function exportBackup() {
     const backup = {
       app: 'Lebu', schemaVersion: 16, exportedAt: new Date().toISOString(),
-      profitTarget, targetMode, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments,
+      profitTarget, targetMode, periodType, periodStartDay, historicalSummary, openWeekdays, dayExceptions, recurringCosts, sales, expenses, dailySnapshots, categories, salesChannelFees, soundsEnabled, smartDistributionEnabled, availableCash, cashUpdatedAt, cashAdjustments,
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -2885,12 +2928,13 @@ export default function Home() {
       if (Array.isArray(parsed.expenses)) setExpenses(parsed.expenses);
       if (Array.isArray(parsed.dailySnapshots)) setDailySnapshots(parsed.dailySnapshots);
       if (Array.isArray(parsed.categories)) setCategories(parsed.categories);
+      if (Array.isArray(parsed.salesChannelFees)) setSalesChannelFees(normalizeSalesChannelFeeRules(parsed.salesChannelFees));
       if (typeof parsed.soundsEnabled === 'boolean') setSoundsEnabled(parsed.soundsEnabled);
       if (typeof parsed.smartDistributionEnabled === 'boolean') setSmartDistributionEnabled(parsed.smartDistributionEnabled);
       if (typeof parsed.availableCash === 'string' || typeof parsed.availableCash === 'number') setAvailableCash(String(parsed.availableCash));
       if (typeof parsed.cashUpdatedAt === 'string') setCashUpdatedAt(parsed.cashUpdatedAt);
       if (Array.isArray(parsed.cashAdjustments)) setCashAdjustments((parsed.cashAdjustments as CashAdjustment[]).slice(-100));
-      const importedState = { schemaVersion: 16, profitTarget: typeof parsed.profitTarget === 'string' ? parsed.profitTarget : profitTarget, targetMode: parsed.targetMode === 'break_even' ? 'break_even' : parsed.targetMode === 'profit' ? 'profit' : targetMode, periodType: ['weekly', 'biweekly', 'monthly'].includes(String(parsed.periodType)) ? parsed.periodType as PeriodType : periodType, periodStartDay: Number.isFinite(Number(parsed.periodStartDay)) ? Math.min(Math.max(Number(parsed.periodStartDay), 1), 31) : periodStartDay, historicalSummary: parsed.historicalSummary && typeof parsed.historicalSummary === 'object' ? parsed.historicalSummary : historicalSummary, openWeekdays: Array.isArray(parsed.openWeekdays) && parsed.openWeekdays.length ? parsed.openWeekdays : openWeekdays, dayExceptions: Array.isArray(parsed.dayExceptions) ? parsed.dayExceptions : dayExceptions, recurringCosts: Array.isArray(parsed.recurringCosts) ? parsed.recurringCosts : recurringCosts, sales: Array.isArray(parsed.sales) ? parsed.sales : sales, expenses: Array.isArray(parsed.expenses) ? parsed.expenses : expenses, dailySnapshots: Array.isArray(parsed.dailySnapshots) ? parsed.dailySnapshots : dailySnapshots, categories: Array.isArray(parsed.categories) ? parsed.categories : categories, soundsEnabled: typeof parsed.soundsEnabled === 'boolean' ? parsed.soundsEnabled : soundsEnabled, smartDistributionEnabled: typeof parsed.smartDistributionEnabled === 'boolean' ? parsed.smartDistributionEnabled : smartDistributionEnabled, availableCash: typeof parsed.availableCash === 'string' || typeof parsed.availableCash === 'number' ? String(parsed.availableCash) : availableCash, cashUpdatedAt: typeof parsed.cashUpdatedAt === 'string' ? parsed.cashUpdatedAt : cashUpdatedAt, cashAdjustments: Array.isArray(parsed.cashAdjustments) ? parsed.cashAdjustments.slice(-100) : cashAdjustments };
+      const importedState = { schemaVersion: 16, profitTarget: typeof parsed.profitTarget === 'string' ? parsed.profitTarget : profitTarget, targetMode: parsed.targetMode === 'break_even' ? 'break_even' : parsed.targetMode === 'profit' ? 'profit' : targetMode, periodType: ['weekly', 'biweekly', 'monthly'].includes(String(parsed.periodType)) ? parsed.periodType as PeriodType : periodType, periodStartDay: Number.isFinite(Number(parsed.periodStartDay)) ? Math.min(Math.max(Number(parsed.periodStartDay), 1), 31) : periodStartDay, historicalSummary: parsed.historicalSummary && typeof parsed.historicalSummary === 'object' ? parsed.historicalSummary : historicalSummary, openWeekdays: Array.isArray(parsed.openWeekdays) && parsed.openWeekdays.length ? parsed.openWeekdays : openWeekdays, dayExceptions: Array.isArray(parsed.dayExceptions) ? parsed.dayExceptions : dayExceptions, recurringCosts: Array.isArray(parsed.recurringCosts) ? parsed.recurringCosts : recurringCosts, sales: Array.isArray(parsed.sales) ? parsed.sales : sales, expenses: Array.isArray(parsed.expenses) ? parsed.expenses : expenses, dailySnapshots: Array.isArray(parsed.dailySnapshots) ? parsed.dailySnapshots : dailySnapshots, categories: Array.isArray(parsed.categories) ? parsed.categories : categories, salesChannelFees: Array.isArray(parsed.salesChannelFees) ? normalizeSalesChannelFeeRules(parsed.salesChannelFees) : salesChannelFees, soundsEnabled: typeof parsed.soundsEnabled === 'boolean' ? parsed.soundsEnabled : soundsEnabled, smartDistributionEnabled: typeof parsed.smartDistributionEnabled === 'boolean' ? parsed.smartDistributionEnabled : smartDistributionEnabled, availableCash: typeof parsed.availableCash === 'string' || typeof parsed.availableCash === 'number' ? String(parsed.availableCash) : availableCash, cashUpdatedAt: typeof parsed.cashUpdatedAt === 'string' ? parsed.cashUpdatedAt : cashUpdatedAt, cashAdjustments: Array.isArray(parsed.cashAdjustments) ? parsed.cashAdjustments.slice(-100) : cashAdjustments };
       await writeLocalState(importedState).catch(() => undefined);
       alert('Respaldo importado. Lebu ya quedó actualizado.');
     } catch {
@@ -2905,7 +2949,7 @@ export default function Home() {
     suppressMilestoneSoundOnce();
     if (!confirm(cloud.user ? '¿Borrar todos los datos de Lebu? Como tenés la nube activa, este borrado también se sincronizará con tu cuenta. Esta acción no se puede deshacer.' : '¿Borrar todos los datos guardados en este dispositivo? Esta acción no se puede deshacer.')) return;
     setProfitTarget(''); setTargetMode('profit'); setPeriodType('monthly'); setPeriodStartDay(1); setHistoricalSummary(null); setOpenWeekdays([0, 1, 2, 3, 4, 5, 6]); setDayExceptions([]);
-    setRecurringCosts([]); setSales([]); setExpenses([]); setDailySnapshots([]); setCategories(initialCategories); setSoundsEnabled(true); setSmartDistributionEnabled(true); setAvailableCash(''); setCashUpdatedAt(''); setCashAdjustments([]);
+    setRecurringCosts([]); setSales([]); setExpenses([]); setDailySnapshots([]); setCategories(initialCategories); setSalesChannelFees([]); setSoundsEnabled(true); setSmartDistributionEnabled(true); setAvailableCash(''); setCashUpdatedAt(''); setCashAdjustments([]);
     await clearLocalState().catch(() => undefined);
     localStorage.removeItem(STORAGE_KEY); LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
     localStorage.removeItem(ONBOARDING_KEY);
@@ -3587,7 +3631,8 @@ export default function Home() {
                 <CalculationRow label="Gastos recurrentes pendientes" value={result.recurringTotal} positive />
                 {result.recurringCoveredTotal > 0 && <CalculationRow label="Recurrentes cubiertos por el acumulado" value={result.recurringCoveredTotal} positive />}
                 <CalculationRow label={result.historicalSummaryActive ? 'Gastos acumulados y registrados' : 'Otros gastos registrados'} value={result.variableSpent} positive />
-                <CalculationRow label="Ventas realizadas" value={result.soldSoFar} negative />
+                {result.channelFees > 0 && <CalculationRow label="Comisiones por canal" value={result.channelFees} positive />}
+                <CalculationRow label="Ventas brutas realizadas" value={result.soldSoFar} negative />
                 <div className="calculation-divider" />
                 <CalculationRow label="Ganancia que todavía falta" value={result.missingProfit} strong />
                 {result.smartActive && (
@@ -3597,7 +3642,7 @@ export default function Home() {
                 )}
                 {result.variableRate > 0 && (
                   <div className="calculation-note">
-                    Para proyectar las ventas que faltan, Lebu contempla un costo variable observado del <strong>{Math.round(result.variableRate * 100)}%</strong>.
+                    Según el mix de canales identificado, Lebu contempla una comisión promedio ponderada del <strong>{Math.round(result.variableRate * 100)}%</strong> sobre las ventas futuras.
                   </div>
                 )}
                 <div className="calculation-total">
@@ -3844,6 +3889,16 @@ export default function Home() {
                 <span className="field-label">Fecha</span>
                 <input type="date" value={saleDraft.date} onChange={(event) => setSaleDraft((current) => ({ ...current, date: event.target.value }))} className="field-input" />
               </label>
+              {salesChannelFees.length > 0 && (
+                <label className="mt-5 block">
+                  <span className="field-label">Canal de venta</span>
+                  <select value={saleDraft.channel} onChange={(event) => setSaleDraft((current) => ({ ...current, channel: event.target.value }))} className="field-input">
+                    <option value="">Directo / sin comisión</option>
+                    {salesChannelFees.map((rule) => <option key={rule.id} value={rule.name}>{rule.name} · {rule.feePct}%</option>)}
+                  </select>
+                  <small className="mt-2 block text-xs leading-5 text-[var(--muted)]">La venta sigue contando por su importe bruto; Lebu descuenta la comisión al calcular la ganancia.</small>
+                </label>
+              )}
               <button type="button" onClick={saveSale} className="primary-button mt-7 w-full justify-center">Guardar venta</button>
             </div>
           ) : (
@@ -4291,6 +4346,50 @@ export default function Home() {
           </button>
 
           {showAdvancedStrategy && (<>
+
+          <div className={`mt-5 rounded-2xl border border-[var(--line)] bg-[var(--card-translucent)] p-4 ${!canManageBusiness ? 'settings-readonly-block' : ''}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2"><h3 className="text-sm font-black">Canales de venta y comisiones</h3><HelpTip text="Lebu conserva la facturación bruta y descuenta esta tasa al calcular ganancia. Además usa el mix observado de canales para estimar cuánto necesitás vender en bruto hacia adelante." /></div>
+                <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Configurá marketplaces o medios que retienen un porcentaje de cada venta. Por ejemplo, PedidosYa 30%.</p>
+              </div>
+            </div>
+            <div className="mt-4 space-y-2">
+              {settingsDraft.salesChannelFees.map((rule) => (
+                <div key={rule.id} className="grid grid-cols-[minmax(0,1fr)_90px_40px] items-center gap-2">
+                  <input
+                    value={rule.name}
+                    onChange={(event) => setSettingsDraft((draft) => ({ ...draft, salesChannelFees: draft.salesChannelFees.map((item) => item.id === rule.id ? { ...item, name: event.target.value } : item) }))}
+                    className="field-input min-w-0"
+                    placeholder="Ej. PedidosYa"
+                    aria-label="Canal de venta"
+                  />
+                  <div className="relative">
+                    <input
+                      inputMode="decimal"
+                      value={String(rule.feePct)}
+                      onChange={(event) => setSettingsDraft((draft) => ({ ...draft, salesChannelFees: draft.salesChannelFees.map((item) => item.id === rule.id ? { ...item, feePct: Math.min(Number(event.target.value.replace(/[^0-9.,]/g, '').replace(',', '.')) || 0, 100) } : item) }))}
+                      className="field-input pr-7 text-right"
+                      aria-label={`Comisión de ${rule.name || 'canal'}`}
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-[var(--muted)]">%</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSettingsDraft((draft) => ({ ...draft, salesChannelFees: draft.salesChannelFees.filter((item) => item.id !== rule.id) }))}
+                    className="icon-button"
+                    aria-label={`Eliminar ${rule.name || 'canal'}`}
+                  ><Trash2 size={16} /></button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setSettingsDraft((draft) => ({ ...draft, salesChannelFees: [...draft.salesChannelFees, { id: createEntityId(), name: '', feePct: 0, aliases: [] }] }))}
+              className="small-button mt-3"
+            ><Plus size={15} /> Agregar canal</button>
+            {settingsDraft.salesChannelFees.length === 0 && <p className="mt-3 text-xs leading-5 text-[var(--muted)]">Sin comisiones configuradas, cada $100 vendidos aportan $100 al objetivo antes de otros gastos.</p>}
+          </div>
 
           <div className={`mt-5 rounded-2xl border border-[var(--line)] bg-[var(--card-translucent)] p-4 ${!canManageBusiness ? 'settings-readonly-block' : ''}`}>
             <div className="flex items-center justify-between gap-3">
