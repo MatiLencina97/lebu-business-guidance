@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
@@ -45,7 +46,7 @@ export default function MargenGananciaPage() {
       <p>Para analizar un producto, empezá por su costo directo. Para aproximarte al resultado real del negocio, agregá comisiones, packaging y otros costos atribuibles al período.</p>
       <h2>Del margen al objetivo diario</h2>
       <p>Lebu usa tus ventas, gastos y objetivos para mostrar cuánto necesitás vender y si venís al ritmo necesario durante el período.</p>
-      <a href="/" style={{fontWeight:700}}>Conocé Lebu →</a><span> · </span><a href="/calculadora-punto-de-equilibrio">Calculá tu punto de equilibrio →</a>
+      <Link href="/" style={{fontWeight:700}}>Conocé Lebu →</Link><span> · </span><Link href="/calculadora-punto-de-equilibrio">Calculá tu punto de equilibrio →</Link>
     </section>
     <p style={{marginTop:40,fontSize:13,opacity:.7}}>Resultado orientativo. No reemplaza asesoramiento contable o financiero.</p>
   </main>;
