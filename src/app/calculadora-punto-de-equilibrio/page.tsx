@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
@@ -35,7 +36,7 @@ export default function PuntoEquilibrioPage() {
       <h2>¿Qué es el punto de equilibrio?</h2><p>Es el nivel de ventas en el que el margen que deja cada venta alcanza exactamente para cubrir los costos fijos. Por debajo perdés dinero; por encima empezás a generar resultado positivo.</p>
       <h2>¿Cómo se calcula?</h2><p>Unidades de equilibrio = costos fijos ÷ (precio de venta − costo variable por unidad). Si tenés muchos productos, podés usar un ticket y costo variable promedio como aproximación.</p>
       <h2>Del cálculo al seguimiento diario</h2><p>Lebu lleva esta lógica al día a día: combina objetivos, ventas, gastos y compromisos para mostrar si tu negocio viene al ritmo necesario.</p>
-      <a href="/" style={{fontWeight:700}}>Conocé Lebu →</a><span> · </span><a href="/calculadora-cuanto-vender-por-dia">Calculá cuánto vender por día →</a>
+      <Link href="/" style={{fontWeight:700}}>Conocé Lebu →</Link><span> · </span><Link href="/calculadora-cuanto-vender-por-dia">Calculá cuánto vender por día →</Link>
     </section>
     <p style={{marginTop:40,fontSize:13,opacity:.7}}>Resultado orientativo. No reemplaza asesoramiento contable o financiero.</p>
   </main>;
